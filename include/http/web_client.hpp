@@ -79,8 +79,8 @@ struct FluxBase
     }
 };
 
-template <typename T, typename Session>
-struct HttpSource : FluxBase<T>::SourceHandler
+template <typename Res, typename Session>
+struct HttpSource : FluxBase<Res>::SourceHandler
 {
     std::shared_ptr<Session> session;
     std::string url;
@@ -107,14 +107,11 @@ struct HttpSource : FluxBase<T>::SourceHandler
             count--;
         }
     }
-    void next(std::function<void(T)> consumer) override
+    void next(std::function<void(Res)> consumer) override
     {
         decrement();
-        session->setResponseHandler(
-            [consumer = std::move(consumer)](
-                const http::response<http::string_body>& res) {
-            consumer(res.body());
-        });
+        session->setResponseHandler([consumer = std::move(consumer)](
+                                        const Res& res) { consumer(res); });
         boost::urls::url_view urlvw(url);
         std::string h = urlvw.host();
         std::string p = urlvw.port();
@@ -133,8 +130,7 @@ struct HttpSource : FluxBase<T>::SourceHandler
     }
 };
 
-template <typename T,
-          typename Session = HttpSession<AsyncSslStream, http::string_body>>
+template <typename Session = HttpSession<AsyncSslStream, http::string_body>>
 struct HttpSink
 {
     using Response = http::response<typename Session::ResponseBody>;
@@ -156,14 +152,14 @@ struct HttpSink
         return *this;
     }
 
-    void operator()(T data, auto&& requestNext)
+    void operator()(Response res, auto&& requestNext)
     {
         session->setResponseHandler(
             [this, requestNext = std::move(requestNext)](const Response& res) {
             bool neednext{false};
             if (onDataHandler)
             {
-                onDataHandler(res, neednext);
+                onDataHandler(std::move(res), neednext);
             }
             requestNext(neednext);
         });
@@ -171,7 +167,7 @@ struct HttpSink
         std::string h = urlvw.host();
         std::string p = urlvw.port();
         std::string path = urlvw.path();
-        http::string_body::value_type body(std::move(data));
+        http::string_body::value_type body(std::move(res.body()));
 
         session->setOptions(Host{h}, Port{p}, Target{path}, Version{11},
                             Verb{http::verb::post}, KeepAlive{true}, body,
@@ -260,6 +256,8 @@ struct Flux : FluxBase<T>
         return m;
     }
 };
+template <typename Body>
+using HttpFlux = Flux<http::response<Body>>;
 
 struct WebClient
 {};

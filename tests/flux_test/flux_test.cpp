@@ -63,10 +63,10 @@ TEST(flux, flux_connection)
     using SourceSession = HttpSession<ASyncTcpStream>;
     std::shared_ptr<SourceSession> session =
         SourceSession::create(ex, ASyncTcpStream(ex));
-    auto m2 = Flux<std::string>::connect(session,
-                                         "https://127.0.0.1:8081/testget");
+    auto m2 = HttpFlux<http::string_body>::connect(
+        session, "https://127.0.0.1:8081/testget");
 
-    m2.subscribe([](auto v) { EXPECT_EQ(v, "hello"); });
+    m2.subscribe([](auto v) { EXPECT_EQ(v.body(), "hello"); });
 
     ioc.run();
 }
@@ -76,14 +76,13 @@ TEST(flux, flux_connection_sink)
     auto ex = net::make_strand(ioc);
 
     using SourceSession = HttpSession<ASyncTcpStream>;
-    std::shared_ptr<SourceSession> session =
-        SourceSession::create(ex, ASyncTcpStream(ex));
-    auto m2 = Flux<std::string>::connect(session,
-                                         "https://127.0.0.1:8081/testget");
     using SinkSession = HttpSession<ASyncTcpStream, http::string_body>;
 
-    HttpSink<std::string, SinkSession> sink(
-        SinkSession::create(ex, ASyncTcpStream(ex)));
+    auto m2 = HttpFlux<http::string_body>::connect(
+        SourceSession::create(ex, ASyncTcpStream(ex)),
+        "https://127.0.0.1:8081/testget");
+
+    HttpSink<SinkSession> sink(SinkSession::create(ex, ASyncTcpStream(ex)));
     sink.setUrl("https://127.0.0.1:8081/testpost")
         .onData(
             [](auto& res, bool& needNext) { EXPECT_EQ(res.body(), "hello"); });
