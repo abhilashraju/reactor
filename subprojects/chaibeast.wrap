@@ -1,0 +1,6 @@
+[wrap-git]
+directory = chaibeast
+
+url = git@github.com:abhilashraju/chaibeast.git
+revision=main
+

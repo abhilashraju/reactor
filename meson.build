@@ -14,6 +14,7 @@ openssl_dep = dependency('openssl', version: '>=1.1.1')
 boost_dep = dependency('boost',modules: ['coroutine'])
 json_dep = dependency('nlohmann_json')
 gtest = subproject('gtest')
+chaibeast=subproject('chaibeast')
 #benchmark = subproject('benchmark')
 
 core_includes = include_directories(['./include'])

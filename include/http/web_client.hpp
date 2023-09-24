@@ -1,6 +1,7 @@
 #pragma once
 #include "http/http_client.hpp"
 
+#include <boost/url/src.hpp>
 #include <boost/url/url.hpp>
 #include <boost/url/url_view.hpp>
 
@@ -15,6 +16,7 @@ struct FluxBase
     {
         virtual void next(std::function<void(T)> consumer) = 0;
         virtual bool hasNext() const = 0;
+        virtual ~SourceHandler() {}
     };
     using CompletionToken = std::function<void(bool)>;
 
