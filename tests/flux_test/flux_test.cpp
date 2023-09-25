@@ -24,7 +24,7 @@ class TestServer
         server.router().add_get_handler(
             "/testget", std::bind_front(&TestServer::testHandler, this));
         server.router().add_post_handler(
-            "/testpost", std::bind_front(&TestServer::testHandler, this));
+            "/testpost", std::bind_front(&TestServer::testPostHandler, this));
 
         runner = new std::thread([&]() { server.start(ctx); });
     }
@@ -32,6 +32,16 @@ class TestServer
 
     chai::VariantResponse testHandler(const chai::DynamicbodyRequest& req,
                                       const chai::http_function& httpfunc)
+    {
+        chai::http::response<chai::http::string_body> res{http::status::ok,
+                                                          req.version()};
+        res.set(http::field::server, BOOST_BEAST_VERSION_STRING);
+        res.body() = "hello";
+        res.prepare_payload();
+        return res;
+    }
+    chai::VariantResponse testPostHandler(const chai::DynamicbodyRequest& req,
+                                          const chai::http_function& httpfunc)
     {
         chai::http::response<chai::http::string_body> res{http::status::ok,
                                                           req.version()};
@@ -60,11 +70,9 @@ TEST(flux, flux_connection)
     net::io_context ioc;
     auto ex = net::make_strand(ioc);
 
-    using SourceSession = HttpSession<ASyncTcpStream>;
-    std::shared_ptr<SourceSession> session =
-        SourceSession::create(ex, ASyncTcpStream(ex));
     auto m2 = HttpFlux<http::string_body>::connect(
-        session, "https://127.0.0.1:8081/testget");
+        AsyncTcpSession<http::empty_body>::create(ex, AsyncTcpStream(ex)),
+        "https://127.0.0.1:8081/testget");
 
     m2.subscribe([](auto v) { EXPECT_EQ(v.body(), "hello"); });
 
@@ -75,18 +83,50 @@ TEST(flux, flux_connection_sink)
     net::io_context ioc;
     auto ex = net::make_strand(ioc);
 
-    using SourceSession = HttpSession<ASyncTcpStream>;
-    using SinkSession = HttpSession<ASyncTcpStream, http::string_body>;
-
     auto m2 = HttpFlux<http::string_body>::connect(
-        SourceSession::create(ex, ASyncTcpStream(ex)),
+        AsyncTcpSession<http::empty_body>::create(ex, AsyncTcpStream(ex)),
         "https://127.0.0.1:8081/testget");
 
-    HttpSink<SinkSession> sink(SinkSession::create(ex, ASyncTcpStream(ex)));
+    auto sink = createHttpSink(
+        AsyncTcpSession<http::string_body>::create(ex, AsyncTcpStream(ex)));
     sink.setUrl("https://127.0.0.1:8081/testpost")
         .onData(
             [](auto& res, bool& needNext) { EXPECT_EQ(res.body(), "hello"); });
 
     m2.subscribe(std::move(sink));
+    ioc.run();
+}
+
+TEST(flux, flux_connection_broadcast_sink)
+{
+    net::io_context ioc;
+    auto ex = net::make_strand(ioc);
+
+    ssl::context ctx{ssl::context::tlsv12_client};
+    ctx.set_verify_mode(ssl::verify_none);
+    auto m2 = HttpFlux<http::string_body>::connect(
+        AsyncSslSession<http::empty_body>::create(ex, AsyncSslStream(ex, ctx)),
+        "https://127.0.0.1:8443/testget");
+
+    auto sink1 = createHttpSink(AsyncSslSession<http::string_body>::create(
+        ex, AsyncSslStream(ex, ctx)));
+    sink1.setUrl("https://127.0.0.1:8443/testpost")
+        .onData(
+            [](auto& res, bool& needNext) { EXPECT_EQ(res.body(), "hello"); });
+
+    auto sink2 = createHttpSink(AsyncSslSession<http::string_body>::create(
+        ex, AsyncSslStream(ex, ctx)));
+    sink2.setUrl("https://127.0.0.1:8443/testpost")
+        .onData([i = 0](auto& res, bool& needNext) mutable {
+            EXPECT_EQ(res.body(), "hello");
+            if (i++ < 5)
+                needNext = true;
+        });
+
+    HttpBroadCastingStringSink broadcast(HttpBroadCastingStringSink::Sinks{
+        {std::move(sink1)}, {std::move(sink2)}});
+
+    m2.subscribe(std::move(broadcast));
+
     ioc.run();
 }

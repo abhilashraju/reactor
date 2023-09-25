@@ -20,8 +20,8 @@ struct FluxBase
     };
     using CompletionToken = std::function<void(bool)>;
 
-    using AsyncSubscriber = std::function<void(T, CompletionToken&&)>;
-    using SyncSubscriber = std::function<void(T)>;
+    using AsyncSubscriber = std::function<void(const T&, CompletionToken&&)>;
+    using SyncSubscriber = std::function<void(const T&)>;
 
   protected:
     explicit FluxBase(SourceHandler* srcHandler) : mSource(srcHandler) {}
@@ -29,18 +29,18 @@ struct FluxBase
     std::function<void()> onFinishHandler{};
     std::vector<std::function<T(T)>> mapHandlers{};
     std::variant<SyncSubscriber, AsyncSubscriber> subscriber;
-    void invokeSubscriber(T& r, AsyncSubscriber& handler)
+    void invokeSubscriber(const T& r, AsyncSubscriber& handler)
     {
-        handler(std::move(r), [this](bool next) {
+        handler(r, [this](bool next) {
             if (next)
             {
                 subscribe(std::move(std::get<AsyncSubscriber>(subscriber)));
             }
         });
     }
-    void invokeSubscriber(T& r, SyncSubscriber& handler)
+    void invokeSubscriber(const T& r, SyncSubscriber& handler)
     {
-        handler(std::move(r));
+        handler(r);
         subscribe(std::move(handler));
     }
 
@@ -52,9 +52,10 @@ struct FluxBase
         {
             mSource->next([handler = std::move(handler), this](T v) {
                 auto r = std::accumulate(begin(mapHandlers), end(mapHandlers),
-                                         v, [](auto sofar, auto& func) {
-                                             return func(std::move(sofar));
-                                         });
+                                         std::move(v),
+                                         [](auto sofar, auto& func) {
+                    return func(std::move(sofar));
+                });
                 std::visit(
                     [&r, this](auto& handler) { invokeSubscriber(r, handler); },
                     subscriber);
@@ -127,52 +128,6 @@ struct HttpSource : FluxBase<Res>::SourceHandler
     void stop()
     {
         forever = false;
-    }
-};
-
-template <typename Session = HttpSession<AsyncSslStream, http::string_body>>
-struct HttpSink
-{
-    using Response = http::response<typename Session::ResponseBody>;
-    using ResponseHandler = std::function<void(const Response&, bool&)>;
-    std::shared_ptr<Session> session;
-    std::string url;
-    ResponseHandler onDataHandler;
-    explicit HttpSink(std::shared_ptr<Session> aSession) :
-        session(std::move(aSession))
-    {}
-    HttpSink& setUrl(std::string u)
-    {
-        url = std::move(u);
-        return *this;
-    }
-    HttpSink& onData(ResponseHandler dataHandler)
-    {
-        onDataHandler = std::move(dataHandler);
-        return *this;
-    }
-
-    void operator()(Response res, auto&& requestNext)
-    {
-        session->setResponseHandler(
-            [this, requestNext = std::move(requestNext)](const Response& res) {
-            bool neednext{false};
-            if (onDataHandler)
-            {
-                onDataHandler(std::move(res), neednext);
-            }
-            requestNext(neednext);
-        });
-        boost::urls::url_view urlvw(url);
-        std::string h = urlvw.host();
-        std::string p = urlvw.port();
-        std::string path = urlvw.path();
-        http::string_body::value_type body(std::move(res.body()));
-
-        session->setOptions(Host{h}, Port{p}, Target{path}, Version{11},
-                            Verb{http::verb::post}, KeepAlive{true}, body,
-                            ContentType{"plain/text"});
-        session->run();
     }
 };
 
@@ -259,6 +214,105 @@ struct Flux : FluxBase<T>
 template <typename Body>
 using HttpFlux = Flux<http::response<Body>>;
 
+template <typename Session = HttpSession<AsyncSslStream, http::string_body>>
+struct HttpSink
+{
+    using Response = http::response<typename Session::ResponseBody>;
+    using ResponseHandler = std::function<void(const Response&, bool&)>;
+    std::shared_ptr<Session> session;
+    std::string url;
+    ResponseHandler onDataHandler;
+    explicit HttpSink(std::shared_ptr<Session> aSession) :
+        session(std::move(aSession))
+    {}
+    ~HttpSink()
+    {
+        // std::cout << "Destructor Called for HttpSink";
+    }
+    HttpSink& setUrl(std::string u)
+    {
+        url = std::move(u);
+        return *this;
+    }
+    HttpSink& onData(ResponseHandler dataHandler)
+    {
+        onDataHandler = std::move(dataHandler);
+        return *this;
+    }
+
+    void operator()(const Response& res, auto&& requestNext)
+    {
+        session->setResponseHandler(
+            [this, requestNext = std::move(requestNext)](const Response& res) {
+            bool neednext{false};
+            if (onDataHandler)
+            {
+                onDataHandler(std::move(res), neednext);
+            }
+            requestNext(neednext);
+        });
+        boost::urls::url_view urlvw(url);
+        std::string h = urlvw.host();
+        std::string p = urlvw.port();
+        std::string path = urlvw.path();
+        http::string_body::value_type body(res.body());
+
+        session->setOptions(Host{h}, Port{p}, Target{path}, Version{11},
+                            Verb{http::verb::post}, KeepAlive{true}, body,
+                            ContentType{"plain/text"});
+        session->run();
+    }
+};
+template <typename Session>
+inline auto createHttpSink(std::shared_ptr<Session> aSession)
+{
+    return HttpSink(std::move(aSession));
+}
+template <typename Body>
+struct HttpBroadCastingSink
+{
+    using TargetSinkType =
+        std::variant<HttpSink<HttpSession<AsyncSslStream, Body>>,
+                     HttpSink<HttpSession<AsyncTcpStream, Body>>>;
+    using Response = http::response<Body>;
+    using Sinks = std::vector<TargetSinkType>;
+    Sinks targetSinks;
+    Sinks tobeCleared;
+    std::function<void(bool)> requestNext;
+    bool nextNeeded{false};
+    int sinkExecutionCount{0};
+
+    HttpBroadCastingSink(Sinks&& sinks) : targetSinks(std::move(sinks)) {}
+    void handleSinkCallback(bool next)
+    {
+        sinkExecutionCount++;
+        nextNeeded |= next;
+        if (sinkExecutionCount == targetSinks.size())
+        {
+            requestNext(nextNeeded);
+        }
+    }
+    void process(Response& res, auto& vsink)
+    {
+        std::visit(
+            [&res, this](auto& sink) {
+            sink(res, std::bind_front(&HttpBroadCastingSink::handleSinkCallback,
+                                      this));
+            },
+            vsink);
+    }
+    void operator()(Response res, auto&& reqNext)
+    {
+        requestNext = std::move(reqNext);
+        sinkExecutionCount = 0;
+        nextNeeded = false;
+        for (auto& sink : targetSinks)
+        {
+            process(res, sink);
+        }
+    }
+};
+using HttpBroadCastingStringSink = HttpBroadCastingSink<http::string_body>;
 struct WebClient
 {};
 } // namespace reactor

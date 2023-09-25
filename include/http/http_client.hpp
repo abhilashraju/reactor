@@ -261,7 +261,7 @@ struct ASyncStream : public std::enable_shared_from_this<ASyncStream<Stream>>
                                          std::move(onReadHandler)));
     }
 };
-struct ASyncTcpStream : public ASyncStream<beast::tcp_stream>
+struct AsyncTcpStream : public ASyncStream<beast::tcp_stream>
 {
   private:
     void on_connect(std::function<void(beast::error_code)> connectionHandler,
@@ -274,7 +274,7 @@ struct ASyncTcpStream : public ASyncStream<beast::tcp_stream>
     }
 
   public:
-    ASyncTcpStream(net::any_io_executor ex) : ASyncStream(beast::tcp_stream(ex))
+    AsyncTcpStream(net::any_io_executor ex) : ASyncStream(beast::tcp_stream(ex))
     {}
     void shutDown()
     {
@@ -426,6 +426,10 @@ class HttpSession :
             }
         });
     }
+    HttpSession(const HttpSession&) = delete;
+    HttpSession(HttpSession&&) = delete;
+    HttpSession& operator=(const HttpSession&) = delete;
+    HttpSession& operator=(HttpSession&&) = delete;
 
   public:
     using ResponseBody = ResBody;
@@ -549,4 +553,18 @@ class HttpSession :
         resonseHandler = std::move(handler);
     }
 };
+template <typename ReqBody = http::empty_body,
+          typename ResBody = http::string_body>
+using AsyncSslSession = HttpSession<AsyncSslStream, ReqBody, ResBody>;
+
+template <typename ReqBody = http::empty_body,
+          typename ResBody = http::string_body>
+using AsyncTcpSession = HttpSession<AsyncTcpStream, ReqBody, ResBody>;
+
+template <typename ReqBody = http::empty_body,
+          typename ResBody = http::string_body>
+using SslSession = HttpSession<SslStream, ReqBody, ResBody>;
+template <typename ReqBody = http::empty_body,
+          typename ResBody = http::string_body>
+using TcpSession = HttpSession<TcpStream, ReqBody, ResBody>;
 } // namespace reactor
