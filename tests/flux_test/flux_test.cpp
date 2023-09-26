@@ -74,7 +74,7 @@ TEST(flux, flux_connection)
         AsyncTcpSession<http::empty_body>::create(ex, AsyncTcpStream(ex)),
         "https://127.0.0.1:8081/testget");
 
-    m2.subscribe([](auto v) { EXPECT_EQ(v.body(), "hello"); });
+    m2.subscribe([](auto v) { EXPECT_EQ(v.response().body(), "hello"); });
 
     ioc.run();
 }
@@ -90,8 +90,9 @@ TEST(flux, flux_connection_sink)
     auto sink = createHttpSink(
         AsyncTcpSession<http::string_body>::create(ex, AsyncTcpStream(ex)));
     sink.setUrl("https://127.0.0.1:8081/testpost")
-        .onData(
-            [](auto& res, bool& needNext) { EXPECT_EQ(res.body(), "hello"); });
+        .onData([](auto& res, bool& needNext) {
+            EXPECT_EQ(res.response().body(), "hello");
+        });
 
     m2.subscribe(std::move(sink));
     ioc.run();
@@ -111,22 +112,21 @@ TEST(flux, flux_connection_broadcast_sink)
     auto sink1 = createHttpSink(AsyncSslSession<http::string_body>::create(
         ex, AsyncSslStream(ex, ctx)));
     sink1.setUrl("https://127.0.0.1:8443/testpost")
-        .onData(
-            [](auto& res, bool& needNext) { EXPECT_EQ(res.body(), "hello"); });
+        .onData([](auto& res, bool& needNext) {
+            EXPECT_EQ(res.response().body(), "hello");
+        });
 
     auto sink2 = createHttpSink(AsyncSslSession<http::string_body>::create(
         ex, AsyncSslStream(ex, ctx)));
     sink2.setUrl("https://127.0.0.1:8443/testpost")
         .onData([i = 0](auto& res, bool& needNext) mutable {
-            EXPECT_EQ(res.body(), "hello");
+            EXPECT_EQ(res.response().body(), "hello");
             if (i++ < 5)
                 needNext = true;
         });
 
-    HttpBroadCastingStringSink broadcast(HttpBroadCastingStringSink::Sinks{
-        {std::move(sink1)}, {std::move(sink2)}});
-
-    m2.subscribe(std::move(broadcast));
+    m2.subscribe(
+        createStringBodyBroadCaster(std::move(sink1), std::move(sink2)));
 
     ioc.run();
 }

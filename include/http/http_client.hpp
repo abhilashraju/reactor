@@ -338,7 +338,24 @@ struct AsyncSslStream : public ASyncStream<beast::ssl_stream<beast::tcp_stream>>
         });
     }
 };
-// Performs an HTTP GET and prints the response
+template <typename Response>
+struct HttpExpected
+{
+    Response resp;
+    beast::error_code ec{};
+    operator bool() const
+    {
+        return ec.operator bool();
+    }
+    auto error() const
+    {
+        return ec;
+    }
+    const auto& response() const
+    {
+        return resp;
+    }
+};
 template <typename Stream, typename ReqBody = http::empty_body,
           typename ResBody = http::string_body>
 class HttpSession :
@@ -395,6 +412,7 @@ class HttpSession :
             resolve();
         }
     };
+    using Response = http::response<ResBody>;
 
   private:
     using Base =
@@ -404,10 +422,9 @@ class HttpSession :
     beast::flat_buffer buffer_; // (Must persist between reads)
     http::request<ReqBody> req_;
     http::response<ResBody> res_;
-    using ResponseHandler =
-        std::function<void(const http::response<http::string_body>&)>;
+    using ResponseHandler = std::function<void(const HttpExpected<Response>&)>;
 
-    ResponseHandler resonseHandler;
+    ResponseHandler responseHandler;
     std::string host;
     std::string port;
     std::variant<std::monostate, InUse, Idle, Disconnected> connectionState;
@@ -417,12 +434,10 @@ class HttpSession :
     {
         stream->setErrorHandler([this](beast::error_code ec, const char* what) {
             std::cerr << what << ": " << ec.message() << "\n";
-            if (resonseHandler)
+            if (responseHandler)
             {
-                http::response<http::string_body> res{http::status::not_found,
-                                                      11};
-                res.body() = "Client Error";
-                resonseHandler(res);
+                http::response<ResBody> res{http::status::not_found, 11};
+                responseHandler(HttpExpected<Response>{res, ec});
             }
         });
     }
@@ -530,9 +545,9 @@ class HttpSession :
     }
     void on_read(beast::error_code ec, std::size_t bytes_transferred)
     {
-        if (resonseHandler)
+        if (responseHandler)
         {
-            resonseHandler(res_);
+            responseHandler(HttpExpected<Response>{res_, beast::error_code{}});
         }
         res_ = http::response<ResBody>{};
         if (!keepAlive)
@@ -550,7 +565,7 @@ class HttpSession :
     }
     void setResponseHandler(ResponseHandler handler)
     {
-        resonseHandler = std::move(handler);
+        responseHandler = std::move(handler);
     }
 };
 template <typename ReqBody = http::empty_body,

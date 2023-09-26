@@ -212,12 +212,13 @@ struct Flux : FluxBase<T>
     }
 };
 template <typename Body>
-using HttpFlux = Flux<http::response<Body>>;
+using HttpFlux = Flux<HttpExpected<http::response<Body>>>;
 
 template <typename Session = HttpSession<AsyncSslStream, http::string_body>>
 struct HttpSink
 {
-    using Response = http::response<typename Session::ResponseBody>;
+    using Response =
+        HttpExpected<http::response<typename Session::ResponseBody>>;
     using ResponseHandler = std::function<void(const Response&, bool&)>;
     std::shared_ptr<Session> session;
     std::string url;
@@ -255,7 +256,7 @@ struct HttpSink
         std::string h = urlvw.host();
         std::string p = urlvw.port();
         std::string path = urlvw.path();
-        http::string_body::value_type body(res.body());
+        http::string_body::value_type body(res.response().body());
 
         session->setOptions(Host{h}, Port{p}, Target{path}, Version{11},
                             Verb{http::verb::post}, KeepAlive{true}, body,
@@ -268,13 +269,13 @@ inline auto createHttpSink(std::shared_ptr<Session> aSession)
 {
     return HttpSink(std::move(aSession));
 }
-template <typename Body>
+template <typename Body = http::string_body>
 struct HttpBroadCastingSink
 {
     using TargetSinkType =
         std::variant<HttpSink<HttpSession<AsyncSslStream, Body>>,
                      HttpSink<HttpSession<AsyncTcpStream, Body>>>;
-    using Response = http::response<Body>;
+    using Response = HttpExpected<http::response<Body>>;
     using Sinks = std::vector<TargetSinkType>;
     Sinks targetSinks;
     Sinks tobeCleared;
@@ -312,7 +313,19 @@ struct HttpBroadCastingSink
         }
     }
 };
-using HttpBroadCastingStringSink = HttpBroadCastingSink<http::string_body>;
+template <typename Body, typename... Args>
+inline auto createHttpBroadCaster(Args&&... args)
+{
+    return HttpBroadCastingSink<Body>(
+        HttpBroadCastingSink<http::string_body>::Sinks{
+            (std::forward<Args>(args), ...)});
+}
+template <typename... Args>
+inline auto createStringBodyBroadCaster(Args&&... args)
+{
+    return createHttpBroadCaster<http::string_body>(
+        std::forward<Args>(args)...);
+}
 struct WebClient
 {};
 } // namespace reactor
