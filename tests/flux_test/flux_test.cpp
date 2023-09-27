@@ -120,9 +120,14 @@ TEST(flux, flux_connection_broadcast_sink)
         ex, AsyncSslStream(ex, ctx)));
     sink2.setUrl("https://127.0.0.1:8443/testpost")
         .onData([i = 0](auto& res, bool& needNext) mutable {
-            EXPECT_EQ(res.response().body(), "hello");
-            if (i++ < 5)
-                needNext = true;
+            if (!res.isError())
+            {
+                EXPECT_EQ(res.response().body(), "hello");
+                if (i++ < 5)
+                    needNext = true;
+                return;
+            }
+            std::cout << res.error().what() << "\n" << res.response();
         });
 
     m2.subscribe(

@@ -343,7 +343,7 @@ struct HttpExpected
 {
     Response resp;
     beast::error_code ec{};
-    operator bool() const
+    bool isError() const
     {
         return ec.operator bool();
     }
