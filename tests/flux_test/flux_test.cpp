@@ -65,6 +65,27 @@ TEST(flux, just_int)
     EXPECT_EQ(std::equal(begin(captured), end(captured), begin(totest)), true);
     EXPECT_EQ(finished, true);
 }
+
+TEST(flux, just_int_with_map)
+{
+    bool finished{false};
+    std::vector<std::string> captured;
+    auto ins = std::back_inserter(captured);
+    auto m2 = Flux<std::string>::range(std::vector<std::string>{"hi", "hello"});
+
+    m2.map<int>(
+          [](const auto& v) {
+        return v.length();
+    }).map<bool>([](const auto& v) {
+          return v >= 5;
+      }).subscribe([](auto v, auto next) {
+        std::cout << "value " << v << "\n";
+        next(true);
+    });
+    // std::vector totest = {"hi", "hello"};
+    // EXPECT_EQ(std::equal(begin(captured), end(captured), begin(totest)),
+    // true); EXPECT_EQ(finished, true);
+}
 TEST(flux, flux_connection)
 {
     net::io_context ioc;

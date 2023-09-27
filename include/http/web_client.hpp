@@ -10,7 +10,7 @@
 namespace reactor
 {
 template <typename T, typename Type>
-struct SunscriberType
+struct SubscriberType
 {
     using value_type = T;
     using CompletionToken = std::function<void(bool)>;
@@ -45,13 +45,16 @@ struct SunscriberType
     }
 };
 
-template <typename SrcType, typename DestType>
-struct Adapter : SunscriberType<SrcType, Adapter<SrcType, DestType>>
+template <typename SrcType, typename DestType, typename Source>
+struct Adapter : SubscriberType<DestType, Adapter<SrcType, DestType, Source>>
 {
-    using Base = SunscriberType<SrcType, Adapter<SrcType, DestType>>;
     using AdaptFuncion = std::function<DestType(const SrcType&)>;
+
+    using Base = SubscriberType<DestType, Adapter<SrcType, DestType, Source>>;
     AdaptFuncion adaptFunc;
-    Adapter(AdaptFuncion func) : adaptFunc(std::move(func)) {}
+    Source* src{nullptr};
+    Adapter(AdaptFuncion func, Source* s) : adaptFunc(std::move(func)), src(s)
+    {}
     void operator()(const SrcType& res, auto&& reqNext)
     {
         Base::visit(adaptFunc(res));
@@ -59,14 +62,20 @@ struct Adapter : SunscriberType<SrcType, Adapter<SrcType, DestType>>
     void subscribe(auto handler)
     {
         Base::subscriber = std::move(handler);
+        src->subscribe(*this);
+    }
+    template <typename NewDestType>
+    auto map(std::function<NewDestType(const DestType&)> mapFun)
+    {
+        return Adapter<DestType, NewDestType, Adapter>(std::move(mapFun), this);
     }
 };
 
 template <typename T>
-struct FluxBase : SunscriberType<T, FluxBase<T>>
+struct FluxBase : SubscriberType<T, FluxBase<T>>
 {
     using value_type = T;
-    using Base = SunscriberType<T, FluxBase<T>>;
+    using Base = SubscriberType<T, FluxBase<T>>;
 
     struct SourceHandler
     {
@@ -96,12 +105,16 @@ struct FluxBase : SunscriberType<T, FluxBase<T>>
             onFinishHandler();
         }
     }
-    FluxBase& onFinish(std::function<void()> finishH)
+    FluxBase& onFinish(std::function<void()> finish)
     {
-        onFinishHandler = std::move(finishH);
+        onFinishHandler = std::move(finish);
         return *this;
     }
-    FluxBase& map(std::function<T(T)> mapFun) {}
+    template <typename DestType>
+    auto map(std::function<DestType(const T&)> mapFun)
+    {
+        return Adapter<T, DestType, FluxBase>(std::move(mapFun), this);
+    }
 };
 
 template <typename Res, typename Session>
