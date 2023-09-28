@@ -86,6 +86,31 @@ TEST(flux, just_int_with_map)
     // EXPECT_EQ(std::equal(begin(captured), end(captured), begin(totest)),
     // true); EXPECT_EQ(finished, true);
 }
+
+TEST(flux, generator)
+{
+    bool finished{false};
+    auto m2 = Flux<std::string>::generate(
+        [myvec = std::vector<std::string>{"hi", "hello"},
+         i = 0](bool& hasNext) mutable {
+        auto ret = myvec.at(i++);
+        hasNext = i < myvec.size();
+        return ret;
+    });
+
+    m2.map<int>(
+          [](const auto& v) {
+        return v.length();
+    }).map<bool>([](const auto& v) {
+          return v >= 5;
+      }).subscribe([](auto v, auto next) {
+        std::cout << "value " << v << "\n";
+        next(true);
+    });
+    // std::vector totest = {"hi", "hello"};
+    // EXPECT_EQ(std::equal(begin(captured), end(captured), begin(totest)),
+    // true); EXPECT_EQ(finished, true);
+}
 TEST(flux, flux_connection)
 {
     net::io_context ioc;
