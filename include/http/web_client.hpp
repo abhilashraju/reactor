@@ -64,107 +64,29 @@ struct HttpSource : FluxBase<Res>::SourceHandler
 
 template <typename Session>
 HttpSource(std::shared_ptr<Session>) -> HttpSource<std::string, Session>;
-template <typename T>
-struct Mono : FluxBase<T>
+
+template <typename Body, bool flux>
+struct HttpFluxBase : FluxBase<HttpExpected<http::response<Body>>>
 {
-    using Base = FluxBase<T>;
-    struct Just : Base::SourceHandler
-    {
-        T value{};
-        bool mHasNext{true};
-        explicit Just(T v) : value(std::move(v)) {}
-        void next(std::function<void(T)> consumer) override
-        {
-            mHasNext = false;
-            consumer(std::move(value));
-        }
-        bool hasNext() const override
-        {
-            return mHasNext;
-        }
-    };
-
-    explicit Mono(Base::SourceHandler* srcHandler) : Base(srcHandler) {}
-
-    static Mono just(T v)
-    {
-        return Mono{new Just(std::move(v))};
-    }
+    using SourceType = HttpExpected<http::response<Body>>;
+    using Base = FluxBase<HttpExpected<http::response<Body>>>;
+    explicit HttpFluxBase(Base::SourceHandler* srcHandler) : Base(srcHandler) {}
     template <typename Stream>
-    static Mono connect(std::shared_ptr<HttpSession<Stream>> session,
-                        const std::string& url)
+    static HttpFluxBase connect(std::shared_ptr<HttpSession<Stream>> session,
+                                const std::string& url)
     {
-        auto src = new HttpSource<T, HttpSession<Stream>>(session, 1);
+        auto src = new HttpSource<SourceType, HttpSession<Stream>>(session, 1,
+                                                                   flux);
         src->setUrl(url);
         src->setVerb(http::verb::get);
-        auto m = Mono{src};
-        return m;
-    }
-};
-
-template <typename T>
-struct Flux : FluxBase<T>
-{
-    using Base = FluxBase<T>;
-    template <class R>
-    struct Range : Base::SourceHandler
-    {
-        R range{};
-        R::iterator current{};
-        explicit Range(R v) : range(std::move(v)), current(range.begin()) {}
-        void next(std::function<void(T)> consumer) override
-        {
-            T v = std::move(*current);
-            ++current;
-            consumer(std::move(v));
-        }
-        bool hasNext() const override
-        {
-            return current != range.end();
-        }
-    };
-
-    explicit Flux(Base::SourceHandler* srcHandler) : Base(srcHandler) {}
-    template <class R>
-    static Flux range(R v)
-    {
-        return Flux{new Range<R>(std::move(v))};
-    }
-
-    struct Generator : Base::SourceHandler
-    {
-        using GeneratorFunc = std::function<T(bool& next)>;
-        GeneratorFunc generator;
-        bool nextFound{true};
-        explicit Generator(GeneratorFunc f) : generator(std::move(f)) {}
-        void next(std::function<void(T)> consumer) override
-        {
-            consumer(generator(nextFound));
-        }
-        bool hasNext() const override
-        {
-            return nextFound;
-        }
-    };
-
-    static Flux generate(Generator::GeneratorFunc f)
-    {
-        return Flux{new Generator(std::move(f))};
-    }
-
-    template <typename Stream>
-    static Flux connect(std::shared_ptr<HttpSession<Stream>> session,
-                        const std::string& url)
-    {
-        auto src = new HttpSource<T, HttpSession<Stream>>(session, 1, true);
-        src->setUrl(url);
-        src->setVerb(http::verb::get);
-        auto m = Flux{src};
+        auto m = HttpFluxBase{src};
         return m;
     }
 };
 template <typename Body>
-using HttpFlux = Flux<HttpExpected<http::response<Body>>>;
+using HttpFlux = HttpFluxBase<Body, true>;
+template <typename Body>
+using HttpMono = HttpFluxBase<Body, false>;
 
 template <typename Session = HttpSession<AsyncSslStream, http::string_body>>
 struct HttpSink
@@ -221,50 +143,13 @@ inline auto createHttpSink(std::shared_ptr<Session> aSession)
 {
     return HttpSink(std::move(aSession));
 }
-template <typename Body = http::string_body>
-struct HttpBroadCastingSink
-{
-    using TargetSinkType =
-        std::variant<HttpSink<HttpSession<AsyncSslStream, Body>>,
-                     HttpSink<HttpSession<AsyncTcpStream, Body>>>;
-    using Response = HttpExpected<http::response<Body>>;
-    using Sinks = std::vector<TargetSinkType>;
-    Sinks targetSinks;
-    Sinks tobeCleared;
-    std::function<void(bool)> requestNext;
-    bool nextNeeded{false};
-    int sinkExecutionCount{0};
 
-    HttpBroadCastingSink(Sinks&& sinks) : targetSinks(std::move(sinks)) {}
-    void handleSinkCallback(bool next)
-    {
-        sinkExecutionCount++;
-        nextNeeded |= next;
-        if (sinkExecutionCount == targetSinks.size())
-        {
-            requestNext(nextNeeded);
-        }
-    }
-    void process(Response& res, auto& vsink)
-    {
-        std::visit(
-            [&res, this](auto& sink) {
-            sink(res, std::bind_front(&HttpBroadCastingSink::handleSinkCallback,
-                                      this));
-            },
-            vsink);
-    }
-    void operator()(Response res, auto&& reqNext)
-    {
-        requestNext = std::move(reqNext);
-        sinkExecutionCount = 0;
-        nextNeeded = false;
-        for (auto& sink : targetSinks)
-        {
-            process(res, sink);
-        }
-    }
-};
+template <typename Body = http::string_body>
+using HttpBroadCastingSink =
+    SinkGroup<HttpExpected<http::response<Body>>,
+              HttpSink<HttpSession<AsyncSslStream, Body>>,
+              HttpSink<HttpSession<AsyncTcpStream, Body>>>;
+
 template <typename Body, typename... Args>
 inline auto createHttpBroadCaster(Args&&... args)
 {
