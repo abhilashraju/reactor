@@ -1,4 +1,4 @@
-#include "http/http_client.hpp"
+
 #include "http/web_client.hpp"
 
 #include <filesystem>
@@ -18,4 +18,20 @@ TEST(mono, just_int)
         requestNext(true);
     });
     EXPECT_EQ(finished, true);
+}
+TEST(mono, just_int_with_map)
+{
+    bool finished{false};
+    auto m2 = Mono<std::string>::just(std::string("hi"));
+
+    m2.map<int>(
+          [](const auto& v) {
+        return v.length();
+    }).map<bool>([](const auto& v) {
+          return v >= 2;
+      }).subscribe([](auto v) { EXPECT_EQ(v, true); });
+    Mono<std::string>::just(std::string("h"))
+        .map<int>([](const auto& v) { return v.length(); })
+        .map<bool>([](const auto& v) { return v >= 2; })
+        .subscribe([](auto v) { EXPECT_EQ(v, false); });
 }
