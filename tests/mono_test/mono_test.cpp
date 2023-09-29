@@ -62,3 +62,43 @@ TEST(mono, scope_test_mapper)
     }
     fun();
 }
+TEST(mono, generator)
+{
+    auto m2 = Mono<std::string>::justFrom([]() { return "generated"; });
+
+    m2.map<int>(
+          [](const auto& v) {
+        return v.length();
+    }).map<bool>([](const auto& v) {
+          return v >= 5;
+      }).subscribe([](auto v, auto reqNext) {
+        EXPECT_EQ(v, true);
+        reqNext(true);
+    });
+
+    auto m3 = Mono<std::string>::justPtr([]() { return "generated"; });
+
+    m3->map<int>(
+          [](const auto& v) {
+        return v.length();
+    }).map<bool>([](const auto& v) {
+          return v >= 5;
+      }).subscribe([](auto v, auto reqNext) {
+        EXPECT_EQ(v, true);
+        reqNext(true);
+    });
+}
+TEST(mono, scope_test_sinkgroup)
+{
+    auto fun1 = [](bool v) { EXPECT_EQ(v, false); };
+    auto fun2 = [](bool v) { EXPECT_EQ(v, false); };
+    // using SinkType = std::function<void(bool)>;
+    // SinkGroup<bool, SinkType> sinks{{std::move(fun1), std::move(fun2)}};
+    auto mono = Mono<std::string>::justPtr(std::string("h"));
+    mono->map<int>(
+            [](const auto& v) {
+        return v.length();
+    }).map<bool>([](const auto& v) {
+          return v >= 2;
+      }).subscribe(createSinkGroup<bool>(fun1, fun2));
+}

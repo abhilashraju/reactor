@@ -183,6 +183,30 @@ struct Mono : FluxBase<T>
     {
         return std::make_shared<Mono>(new Just(std::move(v)));
     }
+    struct Generator : Base::SourceHandler
+    {
+        using GeneratorFunc = std::function<T()>;
+        GeneratorFunc generator;
+        bool mHasNext{true};
+        explicit Generator(GeneratorFunc f) : generator(std::move(f)) {}
+        void next(std::function<void(T)> consumer) override
+        {
+            mHasNext = false;
+            consumer(generator());
+        }
+        bool hasNext() const override
+        {
+            return mHasNext;
+        }
+    };
+    static Mono justFrom(Generator::GeneratorFunc f)
+    {
+        return Mono{new Generator(std::move(f))};
+    }
+    static std::shared_ptr<Mono> justPtr(Generator::GeneratorFunc f)
+    {
+        return std::make_shared<Mono>(new Generator(std::move(f)));
+    }
 };
 
 template <typename T>
@@ -237,7 +261,7 @@ struct Flux : FluxBase<T>
     }
 };
 template <typename SourceType, typename... SinkTypes>
-struct SinkGroup
+struct AsyncSinkGroup
 {
     using TargetSinkType = std::variant<SinkTypes...>;
 
@@ -247,7 +271,7 @@ struct SinkGroup
     std::function<void(bool)> requestNext;
     bool nextNeeded{false};
     int sinkExecutionCount{0};
-    SinkGroup(Sinks sinks) : targetSinks(std::move(sinks)) {}
+    AsyncSinkGroup(Sinks sinks) : targetSinks(std::move(sinks)) {}
     void handleSinkCallback(bool next)
     {
         sinkExecutionCount++;
@@ -261,7 +285,8 @@ struct SinkGroup
     {
         std::visit(
             [&res, this](auto& sink) {
-            sink(res, std::bind_front(&SinkGroup::handleSinkCallback, this));
+            sink(res,
+                 std::bind_front(&AsyncSinkGroup::handleSinkCallback, this));
             },
             vsink);
     }
@@ -276,4 +301,34 @@ struct SinkGroup
         }
     }
 };
+
+template <typename SourceType, typename... SinkTypes>
+struct SyncSinkGroup
+{
+    using TargetSinkType = std::variant<SinkTypes...>;
+
+    using Sinks = std::vector<TargetSinkType>;
+    Sinks targetSinks;
+
+    SyncSinkGroup(Sinks sinks) : targetSinks(std::move(sinks)) {}
+
+    void process(const SourceType& res, auto& vsink)
+    {
+        std::visit([&res](auto& sink) { sink(res); }, vsink);
+    }
+    void operator()(const SourceType& res)
+    {
+        for (auto& vsink : targetSinks)
+        {
+            process(res, vsink);
+        }
+    }
+};
+template <typename T, typename... Sink>
+inline auto createSinkGroup(Sink... sink)
+{
+    using BroadCaster = SyncSinkGroup<T, Sink...>;
+    using BroadCasterSinks = typename BroadCaster::Sinks;
+    return BroadCaster{BroadCasterSinks{std::move(sink)...}};
+}
 } // namespace reactor

@@ -146,16 +146,16 @@ inline auto createHttpSink(std::shared_ptr<Session> aSession)
 
 template <typename Body = http::string_body>
 using HttpBroadCastingSink =
-    SinkGroup<HttpExpected<http::response<Body>>,
-              HttpSink<HttpSession<AsyncSslStream, Body>>,
-              HttpSink<HttpSession<AsyncTcpStream, Body>>>;
+    AsyncSinkGroup<HttpExpected<http::response<Body>>,
+                   HttpSink<HttpSession<AsyncSslStream, Body>>,
+                   HttpSink<HttpSession<AsyncTcpStream, Body>>>;
 
 template <typename Body, typename... Args>
 inline auto createHttpBroadCaster(Args&&... args)
 {
-    return HttpBroadCastingSink<Body>(
-        HttpBroadCastingSink<http::string_body>::Sinks{
-            (std::forward<Args>(args), ...)});
+    using BroadCaster = HttpBroadCastingSink<Body>;
+    using BroadCasterSinks = typename BroadCaster::Sinks;
+    return BroadCaster(BroadCasterSinks{(std::forward<Args>(args), ...)});
 }
 template <typename... Args>
 inline auto createStringBodyBroadCaster(Args&&... args)
