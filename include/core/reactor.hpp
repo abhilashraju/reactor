@@ -2,13 +2,14 @@
 #include <functional>
 namespace reactor
 {
-struct SubscriberBase
+struct SubscriberBase : std::enable_shared_from_this<SubscriberBase>
 {
     virtual ~SubscriberBase() {}
 };
 template <typename T, typename Type>
 struct SubscriberType : SubscriberBase
 {
+    using Base = SubscriberBase;
     using value_type = T;
     using CompletionToken = std::function<void(bool)>;
     using AsyncSubscriber =
@@ -46,6 +47,15 @@ template <typename SrcType, typename DestType, typename ParentAdapter>
 struct Adapter :
     SubscriberType<DestType, Adapter<SrcType, DestType, ParentAdapter>>
 {
+    struct LazyAdaptee
+    {
+        Adapter adapter;
+        std::shared_ptr<SubscriberBase> ownerAdaptee;
+        void subscribe(auto handler)
+        {
+            adapter.subscribe(std::move(handler));
+        }
+    };
     using AdaptFuncion = std::function<DestType(const SrcType&)>;
 
     using Base =
@@ -75,6 +85,10 @@ struct Adapter :
     auto rootAdaptee()
     {
         return src->rootAdaptee();
+    }
+    auto makeLazy()
+    {
+        return LazyAdaptee{*this, rootAdaptee()->getSharedPtr()};
     }
 };
 
@@ -133,6 +147,10 @@ struct FluxBase : SubscriberType<T, FluxBase<T>>
     void addToMappers(SubscriberBase* mapper)
     {
         mapHandlers.push_back(std::unique_ptr<SubscriberBase>(mapper));
+    }
+    auto getSharedPtr()
+    {
+        return Base::shared_from_this();
     }
 };
 template <typename T>

@@ -53,8 +53,10 @@ TEST(mono, scope_test_mapper)
         auto m = mono->map<int>(
                          [](const auto& v) {
             return v.length();
-        }).map<bool>([](const auto& v) { return v >= 2; });
-        fun = [mono = mono, m = std::move(m)]() mutable {
+        }).map<bool>([](const auto& v) {
+              return v >= 2;
+          }).makeLazy();
+        fun = [m = std::move(m)]() mutable {
             m.subscribe([](auto v) { EXPECT_EQ(v, false); });
         };
     }
