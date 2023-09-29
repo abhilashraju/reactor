@@ -35,3 +35,28 @@ TEST(mono, just_int_with_map)
         .map<bool>([](const auto& v) { return v >= 2; })
         .subscribe([](auto v) { EXPECT_EQ(v, false); });
 }
+
+TEST(mono, scope_test)
+{
+    Mono<std::string> m;
+    {
+        m = Mono<std::string>::just(std::string("h"));
+    }
+    m.subscribe([](auto v) { EXPECT_EQ(v, "h"); });
+}
+TEST(mono, scope_test_mapper)
+{
+    std::function<void()> fun;
+
+    {
+        auto mono = Mono<std::string>::justPtr(std::string("h"));
+        auto m = mono->map<int>(
+                         [](const auto& v) {
+            return v.length();
+        }).map<bool>([](const auto& v) { return v >= 2; });
+        fun = [mono = mono, m = std::move(m)]() mutable {
+            m.subscribe([](auto v) { EXPECT_EQ(v, false); });
+        };
+    }
+    fun();
+}

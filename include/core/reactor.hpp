@@ -2,8 +2,12 @@
 #include <functional>
 namespace reactor
 {
+struct SubscriberBase
+{
+    virtual ~SubscriberBase() {}
+};
 template <typename T, typename Type>
-struct SubscriberType
+struct SubscriberType : SubscriberBase
 {
     using value_type = T;
     using CompletionToken = std::function<void(bool)>;
@@ -38,15 +42,18 @@ struct SubscriberType
     }
 };
 
-template <typename SrcType, typename DestType, typename Source>
-struct Adapter : SubscriberType<DestType, Adapter<SrcType, DestType, Source>>
+template <typename SrcType, typename DestType, typename ParentAdapter>
+struct Adapter :
+    SubscriberType<DestType, Adapter<SrcType, DestType, ParentAdapter>>
 {
     using AdaptFuncion = std::function<DestType(const SrcType&)>;
 
-    using Base = SubscriberType<DestType, Adapter<SrcType, DestType, Source>>;
+    using Base =
+        SubscriberType<DestType, Adapter<SrcType, DestType, ParentAdapter>>;
     AdaptFuncion adaptFunc;
-    Source* src{nullptr};
-    Adapter(AdaptFuncion func, Source* s) : adaptFunc(std::move(func)), src(s)
+    ParentAdapter* src{nullptr};
+    Adapter(AdaptFuncion func, ParentAdapter* s) :
+        adaptFunc(std::move(func)), src(s)
     {}
     void operator()(const SrcType& res, auto&& reqNext)
     {
@@ -60,7 +67,14 @@ struct Adapter : SubscriberType<DestType, Adapter<SrcType, DestType, Source>>
     template <typename NewDestType>
     auto map(std::function<NewDestType(const DestType&)> mapFun)
     {
-        return Adapter<DestType, NewDestType, Adapter>(std::move(mapFun), this);
+        auto adapter = new Adapter<DestType, NewDestType, Adapter>(
+            std::move(mapFun), this);
+        adapter->rootAdaptee()->addToMappers(adapter);
+        return *adapter;
+    }
+    auto rootAdaptee()
+    {
+        return src->rootAdaptee();
     }
 };
 
@@ -81,6 +95,7 @@ struct FluxBase : SubscriberType<T, FluxBase<T>>
     explicit FluxBase(SourceHandler* srcHandler) : mSource(srcHandler) {}
     std::unique_ptr<SourceHandler> mSource{};
     std::function<void()> onFinishHandler{};
+    std::vector<std::unique_ptr<SubscriberBase>> mapHandlers;
 
   public:
     void subscribe(auto handler)
@@ -106,7 +121,18 @@ struct FluxBase : SubscriberType<T, FluxBase<T>>
     template <typename DestType>
     auto map(std::function<DestType(const T&)> mapFun)
     {
-        return Adapter<T, DestType, FluxBase>(std::move(mapFun), this);
+        auto adapter = new Adapter<T, DestType, FluxBase>(std::move(mapFun),
+                                                          this);
+        addToMappers(adapter);
+        return *adapter;
+    }
+    auto rootAdaptee()
+    {
+        return this;
+    }
+    void addToMappers(SubscriberBase* mapper)
+    {
+        mapHandlers.push_back(std::unique_ptr<SubscriberBase>(mapper));
     }
 };
 template <typename T>
@@ -130,10 +156,14 @@ struct Mono : FluxBase<T>
     };
 
     explicit Mono(Base::SourceHandler* srcHandler) : Base(srcHandler) {}
-
+    Mono() : Base(nullptr) {}
     static Mono just(T v)
     {
         return Mono{new Just(std::move(v))};
+    }
+    static std::shared_ptr<Mono> justPtr(T v)
+    {
+        return std::make_shared<Mono>(new Just(std::move(v)));
     }
 };
 
@@ -160,6 +190,7 @@ struct Flux : FluxBase<T>
     };
 
     explicit Flux(Base::SourceHandler* srcHandler) : Base(srcHandler) {}
+    Flux() : Base(nullptr) {}
     template <class R>
     static Flux range(R v)
     {
