@@ -28,7 +28,7 @@ using tcp = boost::asio::ip::tcp; // from <boost/asio/ip/tcp.hpp>
 template <typename Stream>
 struct SyncStream : public std::enable_shared_from_this<SyncStream<Stream>>
 {
-  private:
+  protected:
     Stream mStream;
 
   protected:
@@ -116,10 +116,15 @@ struct TcpStream : public SyncStream<beast::tcp_stream>
     {
         lowestLayer().close();
     }
+    TcpStream makeCopy()
+    {
+        return TcpStream(mStream.get_executor());
+    }
 };
 struct SslStream : public SyncStream<beast::ssl_stream<beast::tcp_stream>>
 {
   private:
+    ssl::context& sslCtx;
     void on_resolve(std::function<void(beast::error_code)> connectionHandler,
                     tcp::resolver::results_type results) override
     {
@@ -148,7 +153,7 @@ struct SslStream : public SyncStream<beast::ssl_stream<beast::tcp_stream>>
 
   public:
     SslStream(net::any_io_executor ex, ssl::context& ctx) :
-        SyncStream(beast::ssl_stream<beast::tcp_stream>(ex, ctx))
+        SyncStream(beast::ssl_stream<beast::tcp_stream>(ex, ctx)), sslCtx(ctx)
     {}
     void shutDown() override
     {
@@ -165,6 +170,10 @@ struct SslStream : public SyncStream<beast::ssl_stream<beast::tcp_stream>>
         // If we get here then the connection is closed
         // gracefully
     }
+    SslStream makeCopy()
+    {
+        return SslStream(mStream.get_executor(), sslCtx);
+    }
 };
 
 template <typename Stream>
@@ -172,7 +181,7 @@ struct ASyncStream : public std::enable_shared_from_this<ASyncStream<Stream>>
 {
     using Base = std::enable_shared_from_this<ASyncStream<Stream>>;
 
-  private:
+  protected:
     Stream mStream;
 
   protected:
@@ -280,10 +289,15 @@ struct AsyncTcpStream : public ASyncStream<beast::tcp_stream>
     {
         stream().close();
     }
+    AsyncTcpStream makeCopy()
+    {
+        return AsyncTcpStream(mStream.get_executor());
+    }
 };
 struct AsyncSslStream : public ASyncStream<beast::ssl_stream<beast::tcp_stream>>
 {
   private:
+    ssl::context& sslCtx;
     void on_connect(std::function<void(beast::error_code)> connectionHandler,
                     beast::error_code ec,
                     tcp::resolver::results_type::endpoint_type) override
@@ -322,7 +336,7 @@ struct AsyncSslStream : public ASyncStream<beast::ssl_stream<beast::tcp_stream>>
 
   public:
     AsyncSslStream(net::any_io_executor ex, ssl::context& ctx) :
-        ASyncStream(beast::ssl_stream<beast::tcp_stream>(ex, ctx))
+        ASyncStream(beast::ssl_stream<beast::tcp_stream>(ex, ctx)), sslCtx(ctx)
     {}
 
     void shutDown()
@@ -336,6 +350,10 @@ struct AsyncSslStream : public ASyncStream<beast::ssl_stream<beast::tcp_stream>>
             [thisp = Base::shared_from_this()](beast::error_code ec) {
             static_cast<AsyncSslStream*>(thisp.get())->on_shutdown(ec);
         });
+    }
+    AsyncSslStream makeCopy()
+    {
+        return AsyncSslStream(mStream.get_executor(), sslCtx);
     }
 };
 template <typename Response>
@@ -566,6 +584,18 @@ class HttpSession :
     void setResponseHandler(ResponseHandler handler)
     {
         responseHandler = std::move(handler);
+    }
+    auto clone()
+    {
+        auto copystream = stream->makeCopy();
+        return create(resolver_.get_executor(), std::move(copystream));
+    }
+    template <typename NewReqBody>
+    auto cloneWithBodyType()
+    {
+        auto copystream = stream->makeCopy();
+        return HttpSession<Stream, NewReqBody, ResBody>::create(
+            resolver_.get_executor(), copystream);
     }
 };
 template <typename ReqBody = http::empty_body,

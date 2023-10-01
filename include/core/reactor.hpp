@@ -2,6 +2,7 @@
 #include <functional>
 namespace reactor
 {
+
 struct SubscriberBase : std::enable_shared_from_this<SubscriberBase>
 {
     virtual ~SubscriberBase() {}

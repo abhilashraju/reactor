@@ -15,8 +15,6 @@ template <typename Res, typename Session>
 struct HttpSource : FluxBase<Res>::SourceHandler
 {
     std::shared_ptr<Session> session;
-    std::string url;
-    http::verb verb;
     int count{1};
     bool forever{false};
     explicit HttpSource(std::shared_ptr<Session> aSession, int shots,
@@ -26,11 +24,15 @@ struct HttpSource : FluxBase<Res>::SourceHandler
     {}
     void setUrl(std::string u)
     {
-        url = std::move(u);
+        boost::urls::url_view urlvw(u);
+        std::string h = urlvw.host();
+        std::string p = urlvw.port();
+        std::string path = urlvw.path();
+        session->setOptions(Host{h}, Port{p}, Target{path}, Version{11});
     }
     void setVerb(http::verb v)
     {
-        verb = v;
+        session->setOptions(Verb{v});
     }
     void decrement()
     {
@@ -44,12 +46,7 @@ struct HttpSource : FluxBase<Res>::SourceHandler
         decrement();
         session->setResponseHandler([consumer = std::move(consumer)](
                                         const Res& res) { consumer(res); });
-        boost::urls::url_view urlvw(url);
-        std::string h = urlvw.host();
-        std::string p = urlvw.port();
-        std::string path = urlvw.path();
-        session->setOptions(Host{h}, Port{p}, Target{path}, Version{11},
-                            Verb{verb}, KeepAlive{forever});
+        session->setOptions(KeepAlive{forever});
         session->run();
     }
     bool hasNext() const override
@@ -73,13 +70,22 @@ struct HttpFluxBase : FluxBase<HttpExpected<http::response<Body>>>
     explicit HttpFluxBase(Base::SourceHandler* srcHandler) : Base(srcHandler) {}
     template <typename Stream>
     static HttpFluxBase connect(std::shared_ptr<HttpSession<Stream>> session,
-                                const std::string& url)
+                                const std::string& url,
+                                http::verb v = http::verb::get)
     {
         auto src = new HttpSource<SourceType, HttpSession<Stream>>(session, 1,
                                                                    flux);
         src->setUrl(url);
-        src->setVerb(http::verb::get);
+        src->setVerb(v);
         auto m = HttpFluxBase{src};
+        return m;
+    }
+    template <typename Session>
+    static auto makeShared(std::shared_ptr<HttpSession<Session>> session)
+    {
+        auto src = new HttpSource<SourceType, HttpSession<Session>>(session, 1,
+                                                                    flux);
+        auto m = std::make_shared<HttpFluxBase>(src);
         return m;
     }
 };
@@ -163,7 +169,98 @@ inline auto createStringBodyBroadCaster(Args&&... args)
     return createHttpBroadCaster<http::string_body>(
         std::forward<Args>(args)...);
 }
-
+template <typename Stream, typename ReqBody = http::empty_body,
+          typename ResBody = http::string_body>
 struct WebClient
-{};
+{
+    using Session = HttpSession<Stream, ReqBody, ResBody>;
+
+  private:
+    reactor::Host host;
+    reactor::Port port;
+    reactor::Target target;
+    std::shared_ptr<Session> session;
+    reactor::Verb verb;
+
+  public:
+    struct WebClientBuilder
+    {
+        std::string host;
+        std::string port;
+        std::string target;
+        std::shared_ptr<Session> session;
+        WebClientBuilder& withSession(std::shared_ptr<Session> asession)
+        {
+            session = std::move(asession);
+            return *this;
+        }
+        WebClientBuilder& withEndpoint(const std::string& url)
+        {
+            boost::urls::url_view urlvw(url);
+            host = urlvw.host();
+            port = urlvw.port();
+            target = urlvw.path();
+            return *this;
+        }
+
+        WebClient create()
+        {
+            WebClient client;
+            client.host = reactor::Host{host};
+            client.port = reactor::Port{port};
+            client.target = reactor::Target{target};
+            client.session = session->clone();
+
+            return client;
+        }
+    };
+    static WebClientBuilder builder()
+    {
+        return WebClientBuilder();
+    }
+    WebClient& get()
+    {
+        verb = reactor::Verb{http::verb::get};
+        return *this;
+    }
+    WebClient& post()
+    {
+        verb = reactor::Verb{http::verb::post};
+        return *this;
+    }
+    WebClient& patch()
+    {
+        verb = reactor::Verb{http::verb::patch};
+        return *this;
+    }
+
+    WebClient& put()
+    {
+        verb = reactor::Verb{http::verb::put};
+        return *this;
+    }
+    template <typename NewReqBody>
+    WebClient& withBody(NewReqBody body)
+    {
+        session = session.template cloneWithBodyType<NewReqBody>();
+        session.setOption(std::move(body));
+        return *this;
+    }
+
+    std::shared_ptr<HttpFlux<ResBody>> toFlux()
+    {
+        auto m2 = HttpFlux<ResBody>::makeShared(std::move(session));
+        return m2;
+    }
+
+    std::shared_ptr<HttpMono<ResBody>> toMono()
+    {
+        session->setOption(port);
+        session->setOption(host);
+        session->setOption(target);
+        session->setOption(verb);
+        auto m2 = HttpMono<ResBody>::makeShared(std::move(session));
+        return m2;
+    }
+};
 } // namespace reactor
