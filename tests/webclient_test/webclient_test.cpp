@@ -46,7 +46,7 @@ class TestServer
         chai::http::response<chai::http::string_body> res{http::status::ok,
                                                           req.version()};
         res.set(http::field::server, BOOST_BEAST_VERSION_STRING);
-        res.body() = "test post";
+        res.body() = beast::buffers_to_string(req.body().data());
         res.prepare_payload();
         return res;
     }
@@ -112,7 +112,7 @@ TEST(webclient, simple_mono_post)
     mono->subscribe([](auto v) mutable {
         if (!v.isError())
         {
-            EXPECT_EQ(v.response().body(), "test post");
+            EXPECT_EQ(v.response().body(), "test value");
         }
     });
     ioc.run();
@@ -142,6 +142,6 @@ TEST(webclient, simple_flux_post)
         reqNext(false);
     });
     ioc.run();
-    std::vector<std::string> expected{"test post", "test post"};
+    std::vector<std::string> expected{"test value", "test value"};
     EXPECT_EQ(std::equal(begin(actual), end(actual), begin(expected)), true);
 }
