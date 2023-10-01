@@ -129,6 +129,7 @@ TEST(webclient, simple_flux_post)
                     .withEndpoint("https://127.0.0.1:8081/testpost")
                     .create()
                     .post()
+                    .withContentType(ContentType{"plain/text"})
                     .withBody(std::move(body))
                     .toFlux();
     std::vector<std::string> actual;

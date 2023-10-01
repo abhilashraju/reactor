@@ -450,8 +450,19 @@ class HttpSession :
     std::string port;
     std::variant<std::monostate, InUse, Idle, Disconnected> connectionState;
     bool keepAlive{false};
-    HttpSession(net::any_io_executor ex, Stream&& astream) :
-        resolver_(ex), stream(std::make_shared<Stream>(std::move(astream)))
+
+    HttpSession(const HttpSession&) = delete;
+    HttpSession(HttpSession&&) = delete;
+    HttpSession& operator=(const HttpSession&) = delete;
+    HttpSession& operator=(HttpSession&&) = delete;
+
+  public:
+    using ResponseBody = ResBody;
+    using RequestBody = ReqBody;
+    template <typename... Args>
+    HttpSession(net::any_io_executor ex, Args&&... args) :
+        resolver_(ex),
+        stream(std::make_shared<Stream>(ex, std::forward<Args>(args)...))
     {
         stream->setErrorHandler([this](beast::error_code ec, const char* what) {
             std::cerr << what << ": " << ec.message() << "\n";
@@ -462,19 +473,29 @@ class HttpSession :
             }
         });
     }
-    HttpSession(const HttpSession&) = delete;
-    HttpSession(HttpSession&&) = delete;
-    HttpSession& operator=(const HttpSession&) = delete;
-    HttpSession& operator=(HttpSession&&) = delete;
-
-  public:
-    using ResponseBody = ResBody;
-    using RequestBody = ReqBody;
-    [[nodiscard]] static std::shared_ptr<HttpSession<Stream, ReqBody, ResBody>>
-        create(net::any_io_executor ex, Stream&& astream)
+    HttpSession(net::any_io_executor ex, Stream&& strm) :
+        resolver_(ex), stream(std::make_shared<Stream>(std::move(strm)))
     {
-        return std::shared_ptr<HttpSession<Stream, ReqBody, ResBody>>(
-            new HttpSession<Stream, ReqBody, ResBody>(ex, std::move(astream)));
+        stream->setErrorHandler([this](beast::error_code ec, const char* what) {
+            std::cerr << what << ": " << ec.message() << "\n";
+            if (responseHandler)
+            {
+                http::response<ResBody> res{http::status::not_found, 11};
+                responseHandler(HttpExpected<Response>{res, ec});
+            }
+        });
+    }
+    template <typename... Args>
+    [[nodiscard]] static std::shared_ptr<HttpSession>
+        create(net::any_io_executor ex, Args&&... args)
+    {
+        return std::make_shared<HttpSession>(ex, std::forward<Args>(args)...);
+    }
+
+    [[nodiscard]] static std::shared_ptr<HttpSession>
+        create(net::any_io_executor ex, Stream&& strm)
+    {
+        return std::make_shared<HttpSession>(ex, std::move(strm));
     }
     void setOption(ReqBody::value_type body)
     {

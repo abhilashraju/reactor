@@ -117,7 +117,7 @@ TEST(flux, flux_connection)
     auto ex = net::make_strand(ioc);
 
     auto m2 = HttpFlux<http::string_body>::connect(
-        AsyncTcpSession<http::empty_body>::create(ex, AsyncTcpStream(ex)),
+        AsyncTcpSession<http::empty_body>::create(ex),
         "https://127.0.0.1:8081/testget");
 
     m2.subscribe([](auto v) { EXPECT_EQ(v.response().body(), "hello"); });
@@ -130,11 +130,10 @@ TEST(flux, flux_connection_sink)
     auto ex = net::make_strand(ioc);
 
     auto m2 = HttpFlux<http::string_body>::connect(
-        AsyncTcpSession<http::empty_body>::create(ex, AsyncTcpStream(ex)),
+        AsyncTcpSession<http::empty_body>::create(ex),
         "https://127.0.0.1:8081/testget");
 
-    auto sink = createHttpSink(
-        AsyncTcpSession<http::string_body>::create(ex, AsyncTcpStream(ex)));
+    auto sink = createHttpSink(AsyncTcpSession<http::string_body>::create(ex));
     sink.setUrl("https://127.0.0.1:8081/testpost")
         .onData([](auto& res, bool& needNext) {
             EXPECT_EQ(res.response().body(), "hello");
@@ -152,18 +151,18 @@ TEST(flux, flux_connection_broadcast_sink)
     ssl::context ctx{ssl::context::tlsv12_client};
     ctx.set_verify_mode(ssl::verify_none);
     auto m2 = HttpFlux<http::string_body>::connect(
-        AsyncSslSession<http::empty_body>::create(ex, AsyncSslStream(ex, ctx)),
+        AsyncSslSession<http::empty_body>::create(ex, ctx),
         "https://127.0.0.1:8443/testget");
 
-    auto sink1 = createHttpSink(AsyncSslSession<http::string_body>::create(
-        ex, AsyncSslStream(ex, ctx)));
+    auto sink1 =
+        createHttpSink(AsyncSslSession<http::string_body>::create(ex, ctx));
     sink1.setUrl("https://127.0.0.1:8443/testpost")
         .onData([](auto& res, bool& needNext) {
             EXPECT_EQ(res.response().body(), "hello");
         });
 
-    auto sink2 = createHttpSink(AsyncSslSession<http::string_body>::create(
-        ex, AsyncSslStream(ex, ctx)));
+    auto sink2 =
+        createHttpSink(AsyncSslSession<http::string_body>::create(ex, ctx));
     sink2.setUrl("https://127.0.0.1:8443/testpost")
         .onData([i = 0](auto& res, bool& needNext) mutable {
             if (!res.isError())
@@ -180,4 +179,16 @@ TEST(flux, flux_connection_broadcast_sink)
         createStringBodyBroadCaster(std::move(sink1), std::move(sink2)));
 
     ioc.run();
+}
+
+TEST(flux, generator_http_sink)
+{
+    bool finished{false};
+    auto m2 = Flux<std::string>::generate(
+        [myvec = std::vector<std::string>{"hi", "hello"},
+         i = 0](bool& hasNext) mutable {
+        auto ret = myvec.at(i++);
+        hasNext = i < myvec.size();
+        return ret;
+    });
 }

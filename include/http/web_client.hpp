@@ -190,8 +190,7 @@ struct WebClient
         template <typename... Args>
         WebClientBuilder& withSession(auto ex, Args&&... args)
         {
-            session = Session::create(ex,
-                                      Stream(ex, std::forward<Args>(args)...));
+            session = Session::create(ex, std::forward<Args>(args)...);
             return *this;
         }
         WebClientBuilder& withEndpoint(const std::string& url)
@@ -243,6 +242,11 @@ struct WebClient
     WebClient& withBody(ReqBody::value_type body)
     {
         session->setOption(std::move(body));
+        return *this;
+    }
+    WebClient& withContentType(ContentType type)
+    {
+        session->setOption(std::move(type));
         return *this;
     }
 
