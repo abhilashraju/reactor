@@ -68,23 +68,21 @@ struct HttpFluxBase : FluxBase<HttpExpected<http::response<Body>>>
     using SourceType = HttpExpected<http::response<Body>>;
     using Base = FluxBase<HttpExpected<http::response<Body>>>;
     explicit HttpFluxBase(Base::SourceHandler* srcHandler) : Base(srcHandler) {}
-    template <typename Stream>
-    static HttpFluxBase connect(std::shared_ptr<HttpSession<Stream>> session,
+    template <typename Session>
+    static HttpFluxBase connect(std::shared_ptr<Session> session,
                                 const std::string& url,
                                 http::verb v = http::verb::get)
     {
-        auto src = new HttpSource<SourceType, HttpSession<Stream>>(session, 1,
-                                                                   flux);
+        auto src = new HttpSource<SourceType, Session>(session, 1, flux);
         src->setUrl(url);
         src->setVerb(v);
         auto m = HttpFluxBase{src};
         return m;
     }
     template <typename Session>
-    static auto makeShared(std::shared_ptr<HttpSession<Session>> session)
+    static auto makeShared(std::shared_ptr<Session> session)
     {
-        auto src = new HttpSource<SourceType, HttpSession<Session>>(session, 1,
-                                                                    flux);
+        auto src = new HttpSource<SourceType, Session>(session, 1, flux);
         auto m = std::make_shared<HttpFluxBase>(src);
         return m;
     }
@@ -189,9 +187,11 @@ struct WebClient
         std::string port;
         std::string target;
         std::shared_ptr<Session> session;
-        WebClientBuilder& withSession(std::shared_ptr<Session> asession)
+        template <typename... Args>
+        WebClientBuilder& withSession(auto ex, Args&&... args)
         {
-            session = std::move(asession);
+            session = Session::create(ex,
+                                      Stream(ex, std::forward<Args>(args)...));
             return *this;
         }
         WebClientBuilder& withEndpoint(const std::string& url)
@@ -239,11 +239,10 @@ struct WebClient
         verb = reactor::Verb{http::verb::put};
         return *this;
     }
-    template <typename NewReqBody>
-    WebClient& withBody(NewReqBody body)
+
+    WebClient& withBody(ReqBody::value_type body)
     {
-        session = session.template cloneWithBodyType<NewReqBody>();
-        session.setOption(std::move(body));
+        session->setOption(std::move(body));
         return *this;
     }
 

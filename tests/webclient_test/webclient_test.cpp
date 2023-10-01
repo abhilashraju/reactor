@@ -46,7 +46,7 @@ class TestServer
         chai::http::response<chai::http::string_body> res{http::status::ok,
                                                           req.version()};
         res.set(http::field::server, BOOST_BEAST_VERSION_STRING);
-        res.body() = "hello";
+        res.body() = "test post";
         res.prepare_payload();
         return res;
     }
@@ -58,8 +58,7 @@ TEST(webclient, simple_mono)
     net::io_context ioc;
     auto ex = net::make_strand(ioc);
     auto mono = WebClient<AsyncTcpStream>::builder()
-                    .withSession(AsyncTcpSession<http::empty_body>::create(
-                        ex, AsyncTcpStream(ex)))
+                    .withSession(ex)
                     .withEndpoint("https://127.0.0.1:8081/testget")
                     .create()
                     .get()
@@ -79,8 +78,7 @@ TEST(webclient, simple_flux)
     auto ex = net::make_strand(ioc);
     std::vector<std::string> actual;
     auto flux = WebClient<AsyncTcpStream>::builder()
-                    .withSession(AsyncTcpSession<http::empty_body>::create(
-                        ex, AsyncTcpStream(ex)))
+                    .withSession(ex)
                     .withEndpoint("https://127.0.0.1:8081/testget")
                     .create()
                     .get()
@@ -95,6 +93,55 @@ TEST(webclient, simple_flux)
         reqNext(false);
     });
     ioc.run();
-    std::vector<std::string> expected{"hello", "hello"};
+    std::vector<std::string> expected{"test", "hello"};
+    EXPECT_EQ(std::equal(begin(actual), end(actual), begin(expected)), true);
+}
+TEST(webclient, simple_mono_post)
+{
+    net::io_context ioc;
+    auto ex = net::make_strand(ioc);
+    http::string_body::value_type body = "test value";
+
+    auto mono = WebClient<AsyncTcpStream, http::string_body>::builder()
+                    .withSession(ex)
+                    .withEndpoint("https://127.0.0.1:8081/testpost")
+                    .create()
+                    .post()
+                    .withBody(std::move(body))
+                    .toMono();
+    mono->subscribe([](auto v) mutable {
+        if (!v.isError())
+        {
+            EXPECT_EQ(v.response().body(), "test post");
+        }
+    });
+    ioc.run();
+}
+
+TEST(webclient, simple_flux_post)
+{
+    net::io_context ioc;
+    auto ex = net::make_strand(ioc);
+    http::string_body::value_type body = "test value";
+
+    auto flux = WebClient<AsyncTcpStream, http::string_body>::builder()
+                    .withSession(ex)
+                    .withEndpoint("https://127.0.0.1:8081/testpost")
+                    .create()
+                    .post()
+                    .withBody(std::move(body))
+                    .toFlux();
+    std::vector<std::string> actual;
+    flux->subscribe([&actual, i = 0](auto v, auto reqNext) mutable {
+        if (!v.isError())
+        {
+            actual.push_back(v.response().body());
+            reqNext(i++ < 2);
+            return;
+        }
+        reqNext(false);
+    });
+    ioc.run();
+    std::vector<std::string> expected{"test post", "test post"};
     EXPECT_EQ(std::equal(begin(actual), end(actual), begin(expected)), true);
 }

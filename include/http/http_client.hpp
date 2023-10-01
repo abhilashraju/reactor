@@ -374,10 +374,11 @@ struct HttpExpected
         return resp;
     }
 };
-template <typename Stream, typename ReqBody = http::empty_body,
+template <typename SockStream, typename ReqBody = http::empty_body,
           typename ResBody = http::string_body>
 class HttpSession :
-    public std::enable_shared_from_this<HttpSession<Stream, ReqBody, ResBody>>
+    public std::enable_shared_from_this<
+        HttpSession<SockStream, ReqBody, ResBody>>
 {
     struct InUse
     {
@@ -433,8 +434,10 @@ class HttpSession :
     using Response = http::response<ResBody>;
 
   private:
+    using Stream = SockStream;
     using Base =
         std::enable_shared_from_this<HttpSession<Stream, ReqBody, ResBody>>;
+
     tcp::resolver resolver_;
     std::shared_ptr<Stream> stream;
     beast::flat_buffer buffer_; // (Must persist between reads)
@@ -595,7 +598,7 @@ class HttpSession :
     {
         auto copystream = stream->makeCopy();
         return HttpSession<Stream, NewReqBody, ResBody>::create(
-            resolver_.get_executor(), copystream);
+            resolver_.get_executor(), std::move(copystream));
     }
 };
 template <typename ReqBody = http::empty_body,
