@@ -92,11 +92,13 @@ using HttpFlux = HttpFluxBase<Body, true>;
 template <typename Body>
 using HttpMono = HttpFluxBase<Body, false>;
 
-template <typename Session = HttpSession<AsyncSslStream, http::string_body>>
+template <typename SourceType,
+          typename Session = HttpSession<AsyncSslStream, http::string_body>>
 struct HttpSink
 {
     using Response =
         HttpExpected<http::response<typename Session::ResponseBody>>;
+
     using ResponseHandler = std::function<void(const Response&, bool&)>;
     std::shared_ptr<Session> session;
     std::string url;
@@ -119,7 +121,7 @@ struct HttpSink
         return *this;
     }
 
-    void operator()(const Response& res, auto&& requestNext)
+    void operator()(const SourceType& res, auto&& requestNext)
     {
         session->setResponseHandler(
             [this, requestNext = std::move(requestNext)](const Response& res) {
@@ -134,25 +136,48 @@ struct HttpSink
         std::string h = urlvw.host();
         std::string p = urlvw.port();
         std::string path = urlvw.path();
-        http::string_body::value_type body(res.response().body());
+        using namespace std;
+        typename Session::RequestBody::value_type body = tostring(res);
 
         session->setOptions(Host{h}, Port{p}, Target{path}, Version{11},
                             Verb{http::verb::post}, KeepAlive{true}, body,
                             ContentType{"plain/text"});
         session->run();
     }
+    auto tostring(const auto& res)
+    {
+        using namespace std;
+        return to_string(res);
+    }
+    auto tostring(const std::string& res)
+    {
+        return res;
+    }
+    // template <typename SourceResponse>
+    // void fillBody(typename Session::RequestBody::value_type& body,
+    //               const HttpExpected<SourceResponse>& res)
+    // {
+    //     body = res.response().body();
+    // }
+    // void fillBody(typename Session::RequestBody::value_type& body,
+    //               const std::string& res)
+    // {
+    //     body = res;
+    // }
 };
-template <typename Session>
+template <typename SourceType, typename Session>
 inline auto createHttpSink(std::shared_ptr<Session> aSession)
 {
-    return HttpSink(std::move(aSession));
+    return HttpSink<SourceType, Session>(std::move(aSession));
 }
 
 template <typename Body = http::string_body>
 using HttpBroadCastingSink =
     AsyncSinkGroup<HttpExpected<http::response<Body>>,
-                   HttpSink<HttpSession<AsyncSslStream, Body>>,
-                   HttpSink<HttpSession<AsyncTcpStream, Body>>>;
+                   HttpSink<HttpExpected<http::response<Body>>,
+                            HttpSession<AsyncSslStream, Body>>,
+                   HttpSink<HttpExpected<http::response<Body>>,
+                            HttpSession<AsyncTcpStream, Body>>>;
 
 template <typename Body, typename... Args>
 inline auto createHttpBroadCaster(Args&&... args)

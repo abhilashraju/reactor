@@ -373,7 +373,16 @@ struct HttpExpected
     {
         return resp;
     }
+    std::string to_string() const
+    {
+        return resp.body();
+    }
 };
+template <typename Response>
+inline std::string to_string(const HttpExpected<Response>& myStruct)
+{
+    return myStruct.to_string();
+}
 template <typename SockStream, typename ReqBody = http::empty_body,
           typename ResBody = http::string_body>
 class HttpSession :
@@ -587,6 +596,7 @@ class HttpSession :
     }
     void on_read(beast::error_code ec, std::size_t bytes_transferred)
     {
+        connectionState = Idle(Base::shared_from_this());
         if (responseHandler)
         {
             responseHandler(HttpExpected<Response>{res_, beast::error_code{}});
@@ -599,7 +609,6 @@ class HttpSession :
             return;
         }
         res_.keep_alive(keepAlive);
-        connectionState = Idle(Base::shared_from_this());
     }
     bool inUse() const
     {
