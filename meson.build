@@ -18,6 +18,10 @@ chaibeast=subproject('chaibeast')
 #benchmark = subproject('benchmark')
 
 core_includes = include_directories(['./include'])
+reactor_dep = declare_dependency(
+	include_directories : core_includes,
+	dependencies : [dependency('threads'),openssl_dep,boost_dep]
+)
 if get_option('enable-tests')
   subdir('tests')
 endif
