@@ -1,4 +1,6 @@
 #pragma once
+#include "core/reactor_concepts.hpp"
+
 #include <functional>
 namespace reactor
 {
@@ -107,9 +109,11 @@ struct Adapter :
         Base::subscriber = std::move(handler);
         src->subscribe(*this);
     }
-    template <typename NewDestType>
-    auto map(std::function<NewDestType(const DestType&)> mapFun)
+
+    auto map(MapFunction<DestType> auto mapFun)
     {
+        using FuncType = decltype(mapFun);
+        using NewDestType = std::invoke_result_t<FuncType, DestType>;
         auto adapter = new Adapter<DestType, NewDestType, Adapter>(
             std::move(mapFun), this);
         adapter->rootAdaptee()->addToMappers(adapter);
@@ -173,9 +177,11 @@ struct FluxBase : SubscriberType<T, FluxBase<T>>
         onFinishHandler = std::move(finish);
         return *this;
     }
-    template <typename DestType>
-    auto map(std::function<DestType(const T&)> mapFun)
+
+    auto map(MapFunction<T> auto mapFun)
     {
+        using FuncType = decltype(mapFun);
+        using DestType = std::invoke_result_t<FuncType, T>;
         auto adapter = new Adapter<T, DestType, FluxBase>(std::move(mapFun),
                                                           this);
         addToMappers(adapter);

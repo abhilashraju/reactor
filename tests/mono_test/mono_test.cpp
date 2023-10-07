@@ -24,15 +24,15 @@ TEST(mono, just_int_with_map)
     bool finished{false};
     auto m2 = Mono<std::string>::just(std::string("hi"));
 
-    m2.map<int>(
+    m2.map(
           [](const auto& v) {
         return v.length();
-    }).map<bool>([](const auto& v) {
+    }).map([](const auto& v) -> bool {
           return v >= 2;
       }).subscribe([](auto v) { EXPECT_EQ(v, true); });
     Mono<std::string>::just(std::string("h"))
-        .map<int>([](const auto& v) { return v.length(); })
-        .map<bool>([](const auto& v) { return v >= 2; })
+        .map([](const auto& v) { return v.length(); })
+        .map([](const auto& v) { return v >= 2; })
         .subscribe([](auto v) { EXPECT_EQ(v, false); });
 }
 
@@ -50,10 +50,10 @@ TEST(mono, scope_test_mapper)
 
     {
         auto mono = Mono<std::string>::justPtr(std::string("h"));
-        auto m = mono->map<int>(
+        auto m = mono->map(
                          [](const auto& v) {
             return v.length();
-        }).map<bool>([](const auto& v) {
+        }).map([](const auto& v) {
               return v >= 2;
           }).makeLazy();
         fun = [m = std::move(m)]() mutable {
@@ -66,10 +66,10 @@ TEST(mono, generator)
 {
     auto m2 = Mono<std::string>::justFrom([]() { return "generated"; });
 
-    m2.map<int>(
+    m2.map(
           [](const auto& v) {
         return v.length();
-    }).map<bool>([](const auto& v) {
+    }).map([](const auto& v) {
           return v >= 5;
       }).subscribe([](auto v, auto reqNext) {
         EXPECT_EQ(v, true);
@@ -78,10 +78,10 @@ TEST(mono, generator)
 
     auto m3 = Mono<std::string>::justPtr([]() { return "generated"; });
 
-    m3->map<int>(
+    m3->map(
           [](const auto& v) {
         return v.length();
-    }).map<bool>([](const auto& v) {
+    }).map([](const auto& v) {
           return v >= 5;
       }).subscribe([](auto v, auto reqNext) {
         EXPECT_EQ(v, true);
@@ -95,10 +95,10 @@ TEST(mono, scope_test_sinkgroup)
     // using SinkType = std::function<void(bool)>;
     // SinkGroup<bool, SinkType> sinks{{std::move(fun1), std::move(fun2)}};
     auto mono = Mono<std::string>::justPtr(std::string("h"));
-    mono->map<int>(
+    mono->map(
             [](const auto& v) {
         return v.length();
-    }).map<bool>([](const auto& v) {
+    }).map([](const auto& v) {
           return v >= 2;
       }).subscribe(createSinkGroup<bool>(fun1, fun2));
 }

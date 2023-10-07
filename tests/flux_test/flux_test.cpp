@@ -73,10 +73,10 @@ TEST(flux, just_int_with_map)
     auto ins = std::back_inserter(captured);
     auto m2 = Flux<std::string>::range(std::vector<std::string>{"hi", "hello"});
 
-    m2.map<int>(
+    m2.map(
           [](const auto& v) {
         return v.length();
-    }).map<bool>([](const auto& v) {
+    }).map([](const auto& v) {
           return v >= 5;
       }).subscribe([](auto v, auto next) {
         std::cout << "value " << v << "\n";
@@ -97,19 +97,62 @@ TEST(flux, generator)
         hasNext = i < myvec.size();
         return ret;
     });
-
-    m2.map<int>(
-          [](const auto& v) {
-        return v.length();
-    }).map<bool>([](const auto& v) {
-          return v >= 5;
-      }).subscribe([](auto v, auto next) {
-        std::cout << "value " << v << "\n";
+    std::vector<std::string> captured;
+    auto ins = std::back_inserter(captured);
+    m2.subscribe([&ins](auto v, auto next) {
+        *ins = v;
         next(true);
     });
-    // std::vector totest = {"hi", "hello"};
-    // EXPECT_EQ(std::equal(begin(captured), end(captured), begin(totest)),
-    // true); EXPECT_EQ(finished, true);
+    std::vector expected = {"hi", "hello"};
+    EXPECT_EQ(std::equal(begin(captured), end(captured), begin(expected)),
+              true);
+}
+TEST(flux, generator_with_filter)
+{
+    bool finished{false};
+    auto m2 = Flux<std::string>::generate(
+        [myvec = std::vector<std::string>{"hi", "hello"},
+         i = 0](bool& hasNext) mutable {
+        auto ret = myvec.at(i++);
+        hasNext = i < myvec.size();
+        return ret;
+    });
+    std::vector<std::string> captured;
+    auto ins = std::back_inserter(captured);
+    m2.filter([](const auto& v) {
+          return v == "hi";
+      }).subscribe([&ins](auto v, auto next) {
+        *ins = v;
+        next(true);
+    });
+    std::vector expected = {"hi"};
+    EXPECT_EQ(std::equal(begin(captured), end(captured), begin(expected)),
+              true);
+}
+TEST(flux, generator_with_filter_and_map)
+{
+    bool finished{false};
+    auto m2 = Flux<std::string>::generate(
+        [myvec = std::vector<std::string>{"hi", "hello"},
+         i = 0](bool& hasNext) mutable {
+        auto ret = myvec.at(i++);
+        hasNext = i < myvec.size();
+        return ret;
+    });
+    std::vector<int> captured;
+    auto ins = std::back_inserter(captured);
+    m2.filter(
+          [](const auto& v) {
+        return v == "hi";
+    }).map([](auto&& v) {
+          return v.length();
+      }).subscribe([&ins](auto v, auto next) {
+        *ins = v;
+        next(true);
+    });
+    std::vector expected = {2};
+    EXPECT_EQ(std::equal(begin(captured), end(captured), begin(expected)),
+              true);
 }
 TEST(flux, flux_connection)
 {
