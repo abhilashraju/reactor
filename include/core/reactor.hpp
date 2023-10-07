@@ -42,11 +42,23 @@ struct SubscriberType : SubscriberBase
         std::visit([&r, this](auto& handler) { invokeSubscriber(r, handler); },
                    subscriber);
     }
+    void visit()
+    {
+        std::visit(
+            [this](auto& handler) { invokeSubscriberWithNoValue(handler); },
+            subscriber);
+    }
+    void invokeSubscriberWithNoValue(auto& handler)
+    {
+        self().subscribe(std::move(handler));
+    }
 };
 
-template <typename SrcType, typename DestType, typename ParentAdapter>
+template <typename SrcType, typename DestType, typename ParentAdapter,
+          bool Filterer = false>
 struct Adapter :
-    SubscriberType<DestType, Adapter<SrcType, DestType, ParentAdapter>>
+    SubscriberType<DestType,
+                   Adapter<SrcType, DestType, ParentAdapter, Filterer>>
 {
     struct LazyAdaptee
     {
@@ -58,17 +70,37 @@ struct Adapter :
         }
     };
     using AdaptFuncion = std::function<DestType(const SrcType&)>;
+    using FilterFunction = std::function<bool(const SrcType&)>;
 
     using Base =
-        SubscriberType<DestType, Adapter<SrcType, DestType, ParentAdapter>>;
+        SubscriberType<DestType,
+                       Adapter<SrcType, DestType, ParentAdapter, Filterer>>;
     AdaptFuncion adaptFunc;
+    FilterFunction filterFunc;
     ParentAdapter* src{nullptr};
-    Adapter(AdaptFuncion func, ParentAdapter* s) :
-        adaptFunc(std::move(func)), src(s)
+    Adapter(AdaptFuncion func, ParentAdapter* s,
+            FilterFunction filt = FilterFunction{}) :
+        adaptFunc(std::move(func)),
+        filterFunc(std::move(filt)), src(s)
     {}
+
     void operator()(const SrcType& res, auto&& reqNext)
     {
-        Base::visit(adaptFunc(res));
+        if constexpr (Filterer)
+        {
+            if (filterFunc(res))
+            {
+                Base::visit(res);
+            }
+            else
+            {
+                Base::visit();
+            }
+        }
+        else
+        {
+            Base::visit(adaptFunc(res));
+        }
     }
     void subscribe(auto handler)
     {
@@ -80,6 +112,14 @@ struct Adapter :
     {
         auto adapter = new Adapter<DestType, NewDestType, Adapter>(
             std::move(mapFun), this);
+        adapter->rootAdaptee()->addToMappers(adapter);
+        return *adapter;
+    }
+    auto filter(std::function<bool(const DestType&)> filtFun)
+    {
+        auto identityfunc = [](const DestType& v) { return v; };
+        auto adapter = new Adapter<DestType, DestType, Adapter, true>(
+            std::move(identityfunc), this, std::move(filtFun));
         adapter->rootAdaptee()->addToMappers(adapter);
         return *adapter;
     }
@@ -141,6 +181,15 @@ struct FluxBase : SubscriberType<T, FluxBase<T>>
         addToMappers(adapter);
         return *adapter;
     }
+    auto filter(std::function<bool(const T&)> filtFun)
+    {
+        auto identityfunc = [](const T& v) { return v; };
+        auto adapter = new Adapter<T, T, FluxBase, true>(
+            std::move(identityfunc), this, std::move(filtFun));
+        addToMappers(adapter);
+        return *adapter;
+    }
+
     auto rootAdaptee()
     {
         return this;
