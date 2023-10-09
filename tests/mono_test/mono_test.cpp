@@ -11,11 +11,8 @@ TEST(mono, just_int)
 {
     bool finished = false;
     auto m = Mono<int>::just(10);
-    m.onFinish([&finished]() {
-         finished = true;
-     }).subscribe([](auto v, auto&& requestNext) {
+    m.onFinish([&finished]() { finished = true; }).subscribe([](auto v) {
         EXPECT_EQ(v, 10);
-        requestNext(true);
     });
     EXPECT_EQ(finished, true);
 }
