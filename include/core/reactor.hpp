@@ -9,7 +9,7 @@ struct SubscriberBase : std::enable_shared_from_this<SubscriberBase>
 {
     virtual ~SubscriberBase() {}
 };
-template <typename T, typename Type>
+template <typename T, typename SelfType>
 struct SubscriberType : SubscriberBase
 {
     using Base = SubscriberBase;
@@ -20,9 +20,9 @@ struct SubscriberType : SubscriberBase
     using SyncSubscriber = std::function<void(const value_type&)>;
     using Subscriber = std::variant<SyncSubscriber, AsyncSubscriber>;
     Subscriber subscriber;
-    Type& self()
+    SelfType& self()
     {
-        return *static_cast<Type*>(this);
+        return *static_cast<SelfType*>(this);
     }
     void invokeSubscriber(const value_type& r, AsyncSubscriber& handler)
     {
@@ -53,6 +53,13 @@ struct SubscriberType : SubscriberBase
     void invokeSubscriberWithNoValue(auto& handler)
     {
         self().subscribe(std::move(handler));
+    }
+    auto to(SyncSubScribeFunction<T> auto&& sub)
+    {
+        auto* ptrFun = &sub;
+        auto wrapper = [ptrFun](const T& data) { (*ptrFun)(data); };
+        self().subscribe(std::move(wrapper));
+        return std::move(sub);
     }
 };
 
