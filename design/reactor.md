@@ -272,27 +272,48 @@ The above example demonstrate the use of Broadcasting Sink. Here we are creating
     ioc.run();
     
 ``````
-We have been talking about different types of HttpSource and Sinks. Now lets look at some Dbus example
+We have been talking about different types of HttpSource and Sinks. Now lets look at  Dbus example
 
+Converting to Dbus Managed Object Tree to Json
+``````
+  ManagedObjectType resp = ...;//get managed objects from dbus call
+
+  auto treeGen = reactor::Flux<DbusTreeGenerator::value_type>::generate(
+      DbusTreeGenerator(resp));
+  auto jsonstr =
+      treeGen
+          .filter([](const DbusTreeGenerator::value_type &v) {
+            return std::get<0>(v) == "/xyz/openbmc_project/license/entry2/";
+          })
+          .map([](const DbusTreeGenerator::value_type &v) {
+            return std::visit(JsonConverter{std::get<2>(v)}, std::get<3>(v));
+          })
+          .to(JsonCollector())
+          .toJson()
+          .dump(4);
+  std::cout << jsonstr << "\n";
+
+``````
+Above example demonstrate convertion process from tree of Dbus objects in to a Json string.
+DbusTreeGenerator is genertor function the takes a managed object tree as argument.
+The Flux created from DbusTreeGenerator undergoes several transformations before it reaches
+the JsonCollector, which is a Sink.The tranformation include certain filter to avoid collecting data for certain Dbus objects,then a transformation that tranform tuple of {Path,IfaceName,PropName,DbusVariant} in to a Json node. Finally a JsonCollector sink that accumulate all json node in to summary json. The resulting Json can be retrieved from the collector using toJson function.
+
+There are several other Sources and Sinks can be implemented using the reactor frame work. I think above example suffice to convey the usefullness of the framework.
 ## Alternatives Considered
 
-(2 paragraphs) Include alternate design ideas here which you are leaning away
-from. Elaborate on why a design was considered and why the idea was rejected.
-Show that you did an extensive survey about the state of the art. Compares your
-proposal's features & limitations to existing or similar solutions.
+In BmcWeb implementation you could see alternate approach taken for solving http broadcasting and Dbus tree conversions. Hopefully, the reactor approach will simplify the code, improves the readability, maintainability and enables concurrency.
 
 ## Impacts
 
-API impact? Security impact? Documentation impact? Performance impact? Developer
-impact? Upgradability impact?
+The implementation does not have any impact on current OpenBmc components.It is presents an alternative approach for solving existing OpenBmc problems.  
 
 ### Organizational
 
-- Does this repository require a new repository? (Yes, No)
-- Who will be the initial maintainer(s) of this repository?
-- Which repositories are expected to be modified to execute this design?
-- Make a list, and add listed repository maintainers to the gerrit review.
+The library need a new repository in OpenBmc. 
+Mainainers : Abhilash Raju (abhilash.kollam@gmail.com)
+At present there is no change required to any other repo. 
 
 ## Testing
-
-How will this be tested? How will this feature impact CI testing?
+Unit test based on google test is the preferred testing method. 
+So it is easy to integrate with CI.
