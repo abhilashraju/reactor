@@ -9,39 +9,32 @@ Created: Oct 8, 2023
 
 ## Problem Description
 
-Reactor is and implementation of reactive programming paradigm. The project is inspired from [its spring boot implementation](https://projectreactor.io/docs/core/release/reference/#getting-started-introducing-reactor).The aim is to simplify the asynchronouse programming model we currently use in several places(especially in bmcweb) of openbmc code base. Today we use callback tokens advocated by boost asio. These callbacks are hard to compose together, quickly leading to code that is difficult to read and maintain(known as callback hell). The Reactor apis aims at filling the gaps (mentioned in requirement) in existing approach to deal with Rest and Dbus calls. 
-
-
+Reactor is and implementation of reactive programming paradigm. The project is inspired from [its spring boot implementation](https://projectreactor.io/docs/core/release/reference/#getting-started-introducing-reactor).This is to simplify the asynchronouse programming patterns.BmcWeb can be a potential client for the library. Today we use callback tokens prescribed by boost asio to solve asynchronous IO. But these callbacks are very hard to compose together, quickly leading to code that is difficult to read and maintain. Hopefully, the Reactor APIs can help in writing useful higher level abstractions that can be composed easily to solve asynchronous IO problems.
 
 ## Background and References
 
-(1-2 paragraphs) What background context is necessary? You should mention
-related work inside and outside of OpenBMC. What other Open Source projects are
-trying to solve similar problems? Try to use links or references to external
-sources (other docs or Wikipedia), rather than writing your own explanations.
-Please include document titles so they can be found when links go bad. Include a
-glossary if necessary. Note: this is background; do not write about your design,
-specific requirements details, or ideas to solve problems here.
+https://projectreactor.io/docs/core/release/reference/#getting-started-introducing-reactor
+
 
 ## Requirements
 
-We need a better APIs that can give useful abstraction for application developer to deal with asynchronous concurrent tasks. The APIs should promote better readable and maintenable code by providing useful abstractions to eleminate boilerplate code. The reactive programming is modern day solution to absorbe complexities involved in developement of concurrent programs. It tries to hide explicit synchronisation needs between tasks from developer, thus helping him/her focus on the domain specific computations. The declarative style that focus on "what" rather that "how" part of the computation will helps in produce more readable and maintainable code. The following are some of the important feature that can help in creating  maintainable application. 
+We need better APIs that can give useful abstraction for application developer to deal with asynchronous concurrent tasks. The APIs should promote better readable and maintenable code by providing useful abstractions to eleminate boilerplate code. The reactive programming is modern day solution to absorbe complexities involved in developement of concurrent programs. It tries to hide explicit synchronisation needs between tasks from developer, thus helping him/her focus on the domain specific computations. The declarative style that focus on "what" rather that "how" part of the computation will helps in produce more readable and maintainable code. The following are some of the important feature that can help in creating  maintainable application. 
 
 #### Composability and Readability
 
-An asynchronouse computation can be represented as a declarative task graphs consists of several composable subtasks. The resulting computation graphs can be submitted to a scheduler. Separating a task from its execution context reduces the complexity ,improves readability and reduces the maintainability. Moreover,the developement of domain specific computation and new scheduler algorithms can prgress independently because of loose coupling between them.  
+An asynchronouse computation can be represented as a declarative task graphs consists of several composable subtasks. The resulting computation graphs can be submitted to a scheduler. Separating a task from its execution context reduces the complexity ,improves readability and reduces the maintainance cost. Moreover,the developement of domain specific logic and the enahancements to scheduler algorithms can prgress independently because of the loose couplings between them.  
 
 #### The Assembly Line Analogy
 
-The computation graph can be structure as an assembly line. The data will be originated from a source(publisher) and ends at Sink(subscriber). Along the path the data will be subjected to several transformations and filterings.
+The computation graph can be structure as an assembly line. The data will be originated from a Source(Publisher) and lands at a Sink(Subscriber). Along the path the data will be subjected to several transformations and filterings.
 
-#### Operators(Maps and filters)
+#### Operators(Maps and Filters)
 
-Operator are the tools that can transform the data while it passes though the assembly lines. The opeartors are easily composable.You just need to make sure that operators have compatible input/output data types. Separation of computation in to smaller operator make sure that the code is readable and maintainable. 
+Operator are the tools that can transform the data while it passes through the assembly lines. These opeartors are easily composable.You just need to make sure that operators have compatible output/input data types. Separation of computation in to smaller operator will make it easy to write readable and maintainable code. 
 
 #### Lazy Evaluation
 
-The computation graph creation itself does not do any processing. The resulting graph is first class a object that can be  moved to another execution context or saved for later execution. The computation will be started when you attach Sink(Subscriber) to it. 
+The computation graph creation itself does not do any processing. The resulting graph is a first class object that can be  moved to another execution context or saved for later execution. The execution will be started when you attach a Sink(Subscriber) to it. 
 
 #### Backpressure
 
@@ -49,7 +42,7 @@ A Sink can controll the Source's data production. Sink can do it by calling requ
 
 ## Proposed Design
 
-The reactor APIs should promote code that describes data flow in a declarative manner. So the APIs should be set of composable abstractions that cane be fitted together to solve application's domain specific requirements. This is analogous to how traditional plumbing work has been done using pipes and connectors to redirect water flow. In our case the water is our data and connectors are the APIs abstractions the frameworks provides. The  skeleton of a  reactive application will look like below. 
+The reactor APIs should promote code that describes data flow in a declarative manner. So the APIs should be set of composable abstractions that cane be fitted together to solve application's domain specific problems. This is analogous to how plumbing work has been done using pipes and connectors to redirect water flow. In our case the water is the Data and connectors are the Source, Operators  and the Sink. The  skeleton of a  reactive application will look like below. 
 
 ```ascii
 
