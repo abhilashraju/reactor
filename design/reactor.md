@@ -26,7 +26,7 @@ An asynchronouse computation can be represented as a declarative task graphs con
 
 #### The Assembly Line Analogy
 
-The computation graph can be structure as an assembly line. The data will be originated from a Source(Publisher) and lands at a Sink(Subscriber). Along the path the data will be subjected to several transformations and filterings.
+The computation graph can be structure as an assembly line. The data will be originated from a Source(Publisher) and lands at a Sink(Subscriber). Along the path the data may be subjected to several transformations and filterings.
 
 #### Operators(Maps and Filters)
 
@@ -54,32 +54,35 @@ The reactor APIs should promote code that describes data flow in a declarative m
 
 ```
 Data will be produced by a Source(Publisher) and lands in Sink (Subscriber). The data might be transformed by several operators on its way to Sink. 
-The framework comes with several readymade Publisher, Subscriber and set of opearators. 
-Applcation can creates its own publisher and subscriber. 
+The framework has several buitin Publishers, Subscribers and set of Opearators. 
+Applcation can creates its own Publishers and Subscribers. 
 
-#### Publisher
+#### Publisher(Source)
 Publisher is the producer of data.A publisher can produce values both synchronousely and asynchronousely. In both cases pipeline code looks similar. A publisher should have datastructures in place to handle back pressure from Subscriber. 
 
 Publishers are of two types Mono and Flux.
-A Mono will produce at max one value and finishes after it
+
+A Mono will produce at max one value and finishes after it.
+
 A Flux can produce finite or infinite set of values.
  
-#### Subscriber
+#### Subscriber(Sink)
 
-Subscriber are the final consumer of the data. Subscriber could be a database or just an action handler that sends data to outside world such as a Rest Client. A subscriber can be a publisher for new data flow chain. This way we can create complex data flow chains from simpler data flow parts. Through creative implementation of Sink we can create Fork and Join abstractions.
+Subscriber are the final consumer of the data. Subscriber could be a database or just an action handler that sends data to outside world such as a Rest Client. A subscriber can be a publisher for new data flow chain. This way we can create complex data flow chains from simpler data flow parts. If needed, a Sink can act as Source for a new chain of prcessing line.This way we can make useful join and fork abstractions.
 
 #### Operators
 
-Each operator adds behavior to a Publisher and wraps the previous step’s Publisher into a new instance. The whole chain is thus linked, such that data originates from the first Publisher and moves down the chain, transformed by each link. Eventually, a Subscriber finishes the process
-Map and filter are two major operators,with which we can do most of the data transormation. While map operation transforms the data in transit, the filter operation  suppress the propogation of data according to filter rules. The transformation done at map can potentially change the data type fo data. A filter will never chnage the data type as it is intented to just filter the data.
+Each operator adds behavior to a Publisher and wraps the previous step’s Publisher into a new instance. The whole chain is thus linked, such that data originates from the first Publisher and moves down the chain, transformed by each link. Eventually, a Subscriber finishes the process.
+
+Map and filter are two major operators, with which we can do most of the data transformation. While map operation transforms the data in transit, the filter operation  suppress the propogation of data according to the filter rules. A transformation may change the type of incoming data and produce new data of different type. A filter will never chnage the data type as it is intented to just filter the data.
 
 ### Error Handling 
 
-All errors and exceptions occured duing the data sourcing and and operator processing phases are captured and propogated via error channel to the subcriber. Error channel is separate function ,should be implemented by the Subscriber to catch errors occured in the chain. The error occured inside the  subcriber handler will not be captured the error reporting mechanism. It is is upto the subscriber to deal with graceful handling of such errors.
+All errors and exceptions occured duing the data sourcing and and operator processing phases are captured and propogated via error channel to the subcriber. Error channel is separate function ,should be implemented by the Subscriber to catch errors occured in the chain. The error occured inside the  subcriber handler will not be captured by the error reporting mechanism. It is upto the subscriber to deal with graceful handling of subscriber originated errors.
 
 ### Examples
 
-Integer Mono
+#### Integer Mono
 ```
     bool finished = false;
     auto m = Mono<int>::just(10);
@@ -89,9 +92,9 @@ Integer Mono
     EXPECT_EQ(finished, true);
 
 ```
-The above code demonstrates the use of an Mono that produces one integer value and finishes.
+The above code demonstrates the use of a Mono that produces one integer value and finishes.
 
-String Flux
+#### String Flux
 ```
     bool finished{false};
     std::vector<std::string> captured;
@@ -104,9 +107,9 @@ String Flux
     EXPECT_EQ(std::equal(begin(captured), end(captured), begin(totest)), true);
     EXPECT_EQ(finished, true);
 ```
-The above code is an example of flux in which list strings were originated from source and lands in sink. Then from the sink function we are capturing the data in another container for varification. 
+The above code is an example of flux where a list of strings originated from a Source and lands in a Sink. The Sink captures the data in another container for varification. 
 
-Custom Generator
+#### Custom Generator
 ```
     auto m2 = Flux<std::string>::generate(
         [myvec = std::vector<std::string>{"hi", "hello"},
@@ -125,9 +128,9 @@ Custom Generator
     EXPECT_EQ(std::equal(begin(captured), end(captured), begin(expected)),
               true);
 ```
-Above code uses  a custom generator Source,that draws its elements from a string container. The code also demonstrate another key feature. Sink uses backpressure technique to stop fast Sources from producing data  untill the next request is made. Look at the subscribe function. It is different from what we have seen before. In this new version it accepts adding reqNext callback. The Sink supposed to call the callback when it is ready for consuming next data. The true/false argument in the callback is to tell the source that if Sink is interested in any more data.If we pass false to callback then the data propogation through chain will be stopped and finish signal will be emitted from source.  
+Above code uses  a custom generator Source,that draws its elements from a string container. The code also demonstrate another key feature. Sink uses backpressure technique to stop fast Sources from producing data  untill the next request is made. Look at the subscribe function. It is different from what we have seen before. In this new version it accepts reqNext callback. The Sink supposed to call the callback when it is ready for consuming next data. The true/false argument in the callback is to tell the Source that if the Sink is interested in any more data.If we pass false to callback then the data propogation through the chain will be stopped and a finished signal will be emitted from the Source.  
 
-Operators
+#### Operators
 ``````
     auto m2 = Flux<std::string>::generate(
         [myvec = std::vector<std::string>{"hi", "hello"},
@@ -157,7 +160,7 @@ In this example we added some operators to the chain. A filter followed by a map
 
 So far we were talking about trivial use of frame work APIs. Now lets look at some useful Source and Sink built on top the reactor abstraction.
 
-Http Source
+#### Http Source
 ``````
     net::io_context ioc;
     auto ex = net::make_strand(ioc);
@@ -173,7 +176,7 @@ Http Source
 In this example we have an HttpFlux that carries a string response body. Under the hood HttpFlux uses an asynchronous tcp session, which represents an asynchronous tcp connection to an endpoint.
 The library come with readymade HttpSession with four variation. SynchronousTcpSession, AsynchronousTcpSession , SynchronousSslSession, AsynchronousSslSession. Developer can create a HttpFlux according to their needs easily by choosing apporpriate session.Since the Source is Flux the undelying connection will be kept alive untill Sink request for the termination of data flow. If Developer interested in only single piece of data from the sever he can go for HttpMono instead.Mono will close the connection upon recieving the first response from server. 
 
-HttSink
+#### HttSink
 ``````
     net::io_context ioc;
     auto ex = net::make_strand(ioc);
@@ -194,7 +197,7 @@ HttSink
 ``````
 HttpFlux sources data over network. On the other hand HttSink will send data to network. In the above example data recieved from network is send back to network  using HttpSink . HttpSink will signal the response of the post request from the server through onData callback.
 
-Broadcaster
+#### Broadcaster
 ``````
     net::io_context ioc;
     auto ex = net::make_strand(ioc);
@@ -265,6 +268,39 @@ The above example demonstrate the use of Broadcasting Sink. Here we are creating
     ioc.run();
     
 ``````
+
+#### Web Client
+
+``````
+    net::io_context ioc;
+    auto ex = net::make_strand(ioc);
+    http::string_body::value_type body = "test value";
+
+    auto flux = WebClient<AsyncTcpStream, http::string_body>::builder()
+                    .withSession(ex)
+                    .withEndpoint("https://127.0.0.1:8081/testpost")
+                    .create()
+                    .post()
+                    .withContentType(ContentType{"plain/text"})
+                    .withBody(std::move(body))
+                    .toFlux();
+    std::vector<std::string> actual;
+    flux->subscribe([&actual, i = 0](auto v, auto reqNext) mutable {
+        if (!v.isError())
+        {
+            actual.push_back(v.response().body());
+            reqNext(i++ < 3);
+            return;
+        }
+        reqNext(false);
+    });
+    ioc.run();
+    std::vector<std::string> expected{"test value", "test value"};
+    EXPECT_EQ(std::equal(begin(actual), end(actual), begin(expected)), true);
+``````
+The WebClient is an HttpClient utility that can be used for rest Apis.A WebClient can reuse the connection to the Server for making several requests.In the above example we are making 3 requests to the Server using same connection.
+
+#### Dbus Tree Parser
 We have been talking about different types of HttpSource and Sinks. Now lets look at  Dbus example
 
 Converting to Dbus Managed Object Tree to Json
@@ -288,14 +324,16 @@ Converting to Dbus Managed Object Tree to Json
 
 ``````
 Above example demonstrate convertion process from tree of Dbus objects in to a Json string.
-DbusTreeGenerator is genertor function the takes a managed object tree as argument.
+DbusTreeGenerator is a genertor function that takes a Dbus object tree as argument.
 The Flux created from DbusTreeGenerator undergoes several transformations before it reaches
-the JsonCollector, which is a Sink.The tranformation include certain filter to avoid collecting data for certain Dbus objects,then a transformation that tranform tuple of {Path,IfaceName,PropName,DbusVariant} in to a Json node. Finally a JsonCollector sink that accumulate all json node in to summary json. The resulting Json can be retrieved from the collector using toJson function.
+the JsonCollector, which is the Sink.The tranformation includes a filter to avoid collecting data of certain Dbus objects,then a transformation that transforms tuple of {Path,IfaceName,PropName,DbusVariant} in to a Json node. Finally the JsonCollector Sink accumulatea all json node in to summary json. The resulting Json can be retrieved from the collector using toJson function.
 
-There are several other Sources and Sinks can be implemented using the reactor frame work. I think above example suffice to convey the usefullness of the framework.
+There are several other Sources and Sinks that can be implemented using the reactor frame work. I believe above examples are enough to convey the purpose of the framework.
 ## Alternatives Considered
 
 In BmcWeb implementation you could see alternate approach taken for solving http broadcasting and Dbus tree conversions. Hopefully, the reactor approach will simplify the code, improves the readability, maintainability and enables concurrency.
+
+We could add this as an utility in BmcWeb. But BmcWeb is a service not a Library. There may be other services who are interested in using these features. We may add new features that are not relevent for BmcWeb. So it is better to seperate it from BmcWeb.
 
 ## Impacts
 
@@ -304,8 +342,11 @@ The implementation does not have any impact on current OpenBmc components.It is 
 ### Organizational
 
 The library need a new repository in OpenBmc. 
+
 Mainainers : Abhilash Raju (abhilash.kollam@gmail.com)
+
 At present there is no change required to any other repo. 
+
 
 ## Testing
 Unit test based on google test is the preferred testing method. 
