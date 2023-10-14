@@ -2,6 +2,8 @@
 #include "core/reactor_concepts.hpp"
 
 #include <functional>
+#include <memory>
+#include <variant>
 namespace reactor
 {
 
