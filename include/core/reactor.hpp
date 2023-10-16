@@ -403,6 +403,7 @@ inline auto createSinkGroup(Sink... sink)
 {
     using BroadCaster = SyncSinkGroup<T, Sink...>;
     using BroadCasterSinks = typename BroadCaster::Sinks;
-    return BroadCaster{BroadCasterSinks{std::move(sink)...}};
+    BroadCasterSinks vecSinks{(std::move(sink), ...)};
+    return BroadCaster{std::move(vecSinks)};
 }
 } // namespace reactor

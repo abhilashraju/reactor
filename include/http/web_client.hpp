@@ -184,7 +184,9 @@ inline auto createHttpBroadCaster(Args&&... args)
 {
     using BroadCaster = HttpBroadCastingSink<Body>;
     using BroadCasterSinks = typename BroadCaster::Sinks;
-    return BroadCaster(BroadCasterSinks{(std::forward<Args>(args), ...)});
+    BroadCasterSinks vecSinks{std::forward<Args>(args)...};
+
+    return BroadCaster(std::move(vecSinks));
 }
 template <typename... Args>
 inline auto createStringBodyBroadCaster(Args&&... args)

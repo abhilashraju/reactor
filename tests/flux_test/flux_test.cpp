@@ -2,7 +2,7 @@
 #include "http/web_client.hpp"
 #include "http_server.hpp"
 
-#include <exec/single_thread_context.hpp>
+#include <exec/static_thread_pool.hpp>
 #include <utilities.hpp>
 
 #include <filesystem>
@@ -14,7 +14,7 @@ using namespace reactor;
 
 class TestServer
 {
-    exec::single_thread_context ctx;
+    exec::static_thread_pool ctx;
     chai::HttpServer server{"8081"};
     std::thread* runner{nullptr};
 
@@ -161,9 +161,11 @@ TEST(flux, flux_connection)
 
     auto m2 = HttpFlux<http::string_body>::connect(
         AsyncTcpSession<http::empty_body>::create(ex),
-        "https://127.0.0.1:8081/testget");
+        "http://127.0.0.1:8081/testget");
 
-    m2.subscribe([](auto v) { EXPECT_EQ(v.response().body(), "hello"); });
+    m2.subscribe([](auto v, auto&& reqNext) {
+        EXPECT_EQ(v.response().body(), "hello");
+    });
 
     ioc.run();
 }
@@ -174,11 +176,11 @@ TEST(flux, flux_connection_sink)
 
     auto m2 = HttpFlux<http::string_body>::connect(
         AsyncTcpSession<http::empty_body>::create(ex),
-        "https://127.0.0.1:8081/testget");
+        "http://127.0.0.1:8081/testget");
 
     auto sink = createHttpSink<decltype(m2)::SourceType>(
         AsyncTcpSession<http::string_body>::create(ex));
-    sink.setUrl("https://127.0.0.1:8081/testpost")
+    sink.setUrl("http://127.0.0.1:8081/testpost")
         .onData([](auto& res, bool& needNext) {
             EXPECT_EQ(res.response().body(), "hello");
         });
@@ -195,19 +197,19 @@ TEST(flux, flux_connection_broadcast_sink)
     ssl::context ctx{ssl::context::tlsv12_client};
     ctx.set_verify_mode(ssl::verify_none);
     auto m2 = HttpFlux<http::string_body>::connect(
-        AsyncSslSession<http::empty_body>::create(ex, ctx),
-        "https://127.0.0.1:8443/testget");
+        AsyncTcpSession<http::empty_body>::create(ex),
+        "http://127.0.0.1:8081/testget");
 
     auto sink1 = createHttpSink<decltype(m2)::SourceType>(
-        AsyncSslSession<http::string_body>::create(ex, ctx));
-    sink1.setUrl("https://127.0.0.1:8443/testpost")
+        AsyncTcpSession<http::string_body>::create(ex));
+    sink1.setUrl("http://127.0.0.1:8081/testpost")
         .onData([](auto& res, bool& needNext) {
             EXPECT_EQ(res.response().body(), "hello");
         });
 
     auto sink2 = createHttpSink<decltype(m2)::SourceType>(
-        AsyncSslSession<http::string_body>::create(ex, ctx));
-    sink2.setUrl("https://127.0.0.1:8443/testpost")
+        AsyncTcpSession<http::string_body>::create(ex));
+    sink2.setUrl("http://127.0.0.1:8081/testpost")
         .onData([i = 0](auto& res, bool& needNext) mutable {
             if (!res.isError())
             {
@@ -239,9 +241,9 @@ TEST(flux, generator_http_sink)
         return ret;
     });
     auto sink2 = createHttpSink<std::string>(
-        AsyncSslSession<http::string_body>::create(ex, ctx));
+        AsyncTcpSession<http::string_body>::create(ex));
     int i = 1;
-    sink2.setUrl("https://127.0.0.1:8443/testpost")
+    sink2.setUrl("http://127.0.0.1:8443/testpost")
         .onData([&i](const auto& res, bool& needNext) mutable {
             if (!res.isError())
             {
