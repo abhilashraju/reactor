@@ -312,7 +312,7 @@ struct AsyncSslStream : public ASyncStream<beast::ssl_stream<beast::tcp_stream>>
              connHandler = std::move(connectionHandler)](beast::error_code ec) {
             static_cast<AsyncSslStream*>(thisp.get())
                 ->on_handshake(std::move(connHandler), ec);
-            });
+        });
     }
     void on_shutdown(beast::error_code ec)
     {
@@ -389,6 +389,10 @@ class HttpSession :
     public std::enable_shared_from_this<
         HttpSession<SockStream, ReqBody, ResBody>>
 {
+  public:
+    using Response = http::response<ResBody>;
+
+  private:
     struct InUse
     {
         std::shared_ptr<HttpSession> session;
@@ -440,7 +444,6 @@ class HttpSession :
             resolve();
         }
     };
-    using Response = http::response<ResBody>;
 
   private:
     using Stream = SockStream;
@@ -557,7 +560,7 @@ class HttpSession :
             {
                 handler(state);
             }
-            },
+        },
             connectionState);
     }
     // Start the asynchronous operation

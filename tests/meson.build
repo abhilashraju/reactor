@@ -18,7 +18,7 @@ test_dep_libs = [
 subdir('mono_test')
 subdir('flux_test')
 subdir('webclient_test')
-
+subdir('http_client_test')
 
 # This executable contains all the tests
 project_test_sources += test_main
