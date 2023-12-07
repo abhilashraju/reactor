@@ -110,7 +110,9 @@ struct TcpStream : public SyncStream<beast::tcp_stream>
     }
 
   public:
-    TcpStream(net::any_io_executor ex) : SyncStream(beast::tcp_stream(ex)) {}
+    TcpStream(const net::any_io_executor& ex) :
+        SyncStream(beast::tcp_stream(ex))
+    {}
 
     void shutDown() override
     {
@@ -152,7 +154,7 @@ struct SslStream : public SyncStream<beast::ssl_stream<beast::tcp_stream>>
     }
 
   public:
-    SslStream(net::any_io_executor ex, ssl::context& ctx) :
+    SslStream(const net::any_io_executor& ex, ssl::context& ctx) :
         SyncStream(beast::ssl_stream<beast::tcp_stream>(ex, ctx)), sslCtx(ctx)
     {}
     void shutDown() override
@@ -283,7 +285,8 @@ struct AsyncTcpStream : public ASyncStream<beast::tcp_stream>
     }
 
   public:
-    AsyncTcpStream(net::any_io_executor ex) : ASyncStream(beast::tcp_stream(ex))
+    AsyncTcpStream(const net::any_io_executor& ex) :
+        ASyncStream(beast::tcp_stream(ex))
     {}
     void shutDown()
     {
@@ -335,7 +338,7 @@ struct AsyncSslStream : public ASyncStream<beast::ssl_stream<beast::tcp_stream>>
     }
 
   public:
-    AsyncSslStream(net::any_io_executor ex, ssl::context& ctx) :
+    AsyncSslStream(const net::any_io_executor& ex, ssl::context& ctx) :
         ASyncStream(beast::ssl_stream<beast::tcp_stream>(ex, ctx)), sslCtx(ctx)
     {}
 
@@ -391,6 +394,7 @@ class HttpSession :
 {
   public:
     using Response = http::response<ResBody>;
+    using Stream = SockStream;
 
   private:
     struct InUse
@@ -446,7 +450,6 @@ class HttpSession :
     };
 
   private:
-    using Stream = SockStream;
     using Base =
         std::enable_shared_from_this<HttpSession<Stream, ReqBody, ResBody>>;
 
@@ -472,7 +475,7 @@ class HttpSession :
     using ResponseBody = ResBody;
     using RequestBody = ReqBody;
     template <typename... Args>
-    HttpSession(net::any_io_executor ex, Args&&... args) :
+    HttpSession(const net::any_io_executor& ex, Args&&... args) :
         resolver_(ex),
         stream(std::make_shared<Stream>(ex, std::forward<Args>(args)...))
     {
@@ -485,7 +488,7 @@ class HttpSession :
             }
         });
     }
-    HttpSession(net::any_io_executor ex, Stream&& strm) :
+    HttpSession(const net::any_io_executor& ex, Stream&& strm) :
         resolver_(ex), stream(std::make_shared<Stream>(std::move(strm)))
     {
         stream->setErrorHandler([this](beast::error_code ec, const char* what) {
@@ -499,13 +502,13 @@ class HttpSession :
     }
     template <typename... Args>
     [[nodiscard]] static std::shared_ptr<HttpSession>
-        create(net::any_io_executor ex, Args&&... args)
+        create(const net::any_io_executor& ex, Args&&... args)
     {
         return std::make_shared<HttpSession>(ex, std::forward<Args>(args)...);
     }
 
     [[nodiscard]] static std::shared_ptr<HttpSession>
-        create(net::any_io_executor ex, Stream&& strm)
+        create(const net::any_io_executor& ex, Stream&& strm)
     {
         return std::make_shared<HttpSession>(ex, std::move(strm));
     }

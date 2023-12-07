@@ -2,11 +2,12 @@
 
 #include <gtest/gtest.h>
 using namespace reactor;
+
 TEST(HttpSessionTest, RunTest)
 {
     // Create an io_context and executor
     net::io_context ioContext;
-    net::any_io_executor executor(ioContext.get_executor());
+    auto executor = net::make_strand(ioContext);
 
     // Create an HttpSession object
     using Session = AsyncSslSession<http::string_body>;

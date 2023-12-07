@@ -215,7 +215,7 @@ struct WebClient
         std::string target;
         std::shared_ptr<Session> session;
         template <typename... Args>
-        WebClientBuilder& withSession(auto ex, Args&&... args)
+        WebClientBuilder& withSession(auto& ex, Args&&... args)
         {
             session = Session::create(ex, std::forward<Args>(args)...);
             return *this;

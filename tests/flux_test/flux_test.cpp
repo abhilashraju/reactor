@@ -73,12 +73,10 @@ TEST(flux, just_int_with_map)
     auto ins = std::back_inserter(captured);
     auto m2 = Flux<std::string>::range(std::vector<std::string>{"hi", "hello"});
 
-    m2.map(
-          [](const auto& v) {
-        return v.length();
-    }).map([](const auto& v) {
-          return v >= 5;
-      }).subscribe([](auto v, auto next) {
+    m2.map([](const auto& v) { return v.length(); })
+        .map([](const auto& v) {
+        return v >= 5;
+    }).subscribe([](auto v, auto next) {
         std::cout << "value " << v << "\n";
         next(true);
     });
@@ -120,8 +118,8 @@ TEST(flux, generator_with_filter)
     std::vector<std::string> captured;
     auto ins = std::back_inserter(captured);
     m2.filter([](const auto& v) {
-          return v == "hi";
-      }).subscribe([&ins](auto v, auto next) {
+        return v == "hi";
+    }).subscribe([&ins](auto v, auto next) {
         *ins = v;
         next(true);
     });
@@ -141,12 +139,10 @@ TEST(flux, generator_with_filter_and_map)
     });
     std::vector<int> captured;
     auto ins = std::back_inserter(captured);
-    m2.filter(
-          [](const auto& v) {
-        return v == "hi";
-    }).map([](auto&& v) {
-          return v.length();
-      }).subscribe([&ins](auto v, auto next) {
+    m2.filter([](const auto& v) { return v == "hi"; })
+        .map([](auto&& v) {
+        return v.length();
+    }).subscribe([&ins](auto v, auto next) {
         *ins = v;
         next(true);
     });
@@ -182,8 +178,8 @@ TEST(flux, flux_connection_sink)
         AsyncTcpSession<http::string_body>::create(ex));
     sink.setUrl("http://127.0.0.1:8081/testpost")
         .onData([](auto& res, bool& needNext) {
-            EXPECT_EQ(res.response().body(), "hello");
-        });
+        EXPECT_EQ(res.response().body(), "hello");
+    });
 
     m2.subscribe(std::move(sink));
     ioc.run();
@@ -204,22 +200,22 @@ TEST(flux, flux_connection_broadcast_sink)
         AsyncTcpSession<http::string_body>::create(ex));
     sink1.setUrl("http://127.0.0.1:8081/testpost")
         .onData([](auto& res, bool& needNext) {
-            EXPECT_EQ(res.response().body(), "hello");
-        });
+        EXPECT_EQ(res.response().body(), "hello");
+    });
 
     auto sink2 = createHttpSink<decltype(m2)::SourceType>(
         AsyncTcpSession<http::string_body>::create(ex));
     sink2.setUrl("http://127.0.0.1:8081/testpost")
         .onData([i = 0](auto& res, bool& needNext) mutable {
-            if (!res.isError())
-            {
-                EXPECT_EQ(res.response().body(), "hello");
-                if (i++ < 5)
-                    needNext = true;
-                return;
-            }
-            std::cout << res.error().what() << "\n" << res.response();
-        });
+        if (!res.isError())
+        {
+            EXPECT_EQ(res.response().body(), "hello");
+            if (i++ < 5)
+                needNext = true;
+            return;
+        }
+        std::cout << res.error().what() << "\n" << res.response();
+    });
 
     m2.subscribe(
         createStringBodyBroadCaster(std::move(sink1), std::move(sink2)));
@@ -245,18 +241,18 @@ TEST(flux, generator_http_sink)
     int i = 1;
     sink2.setUrl("http://127.0.0.1:8443/testpost")
         .onData([&i](const auto& res, bool& needNext) mutable {
-            if (!res.isError())
-            {
-                std::string expected("hello ");
-                expected += std::to_string(i++);
-                EXPECT_EQ(res.response().body(), expected);
-                std::cout << res.response().body() << "\n";
-                if (i < 5)
-                    needNext = true;
-                return;
-            }
-            std::cout << res.error().what() << "\n" << res.response();
-        });
+        if (!res.isError())
+        {
+            std::string expected("hello ");
+            expected += std::to_string(i++);
+            EXPECT_EQ(res.response().body(), expected);
+            std::cout << res.response().body() << "\n";
+            if (i < 5)
+                needNext = true;
+            return;
+        }
+        std::cout << res.error().what() << "\n" << res.response();
+    });
     m2.subscribe(std::move(sink2));
 
     while (i < 5)
