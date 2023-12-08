@@ -12,7 +12,23 @@ TEST(HttpSubscriberTest, SendEvent)
     reactor::HttpSubscriber subscriber(executor, destUrl);
 
     // Define the expected data
-    std::string data = "Test data";
+    std::string data = R"(
+        {
+  "Events": [
+    {
+      "Context": "",
+      "EventId": "TestID",
+      "EventTimestamp": "2023-11-23T06:21:54+00:00",
+      "EventType": "Event",
+      "Message": "Generated test event",
+      "MessageArgs": [ ],
+      "MessageId": "OpenBMC.0.2.TestEventLog",
+      "Severity": "OK"
+    }
+  ]
+}
+  
+)";
 
     // Call the sendEvent function
     subscriber.sendEvent(data);

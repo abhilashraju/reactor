@@ -13,6 +13,9 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#define DISPLAY_REF_COUNT(X)                                                   \
+    std::cout << "Reference count: " << __FUNCTION__ << X.use_count()          \
+              << std::endl;
 namespace reactor
 {
 namespace beast = boost::beast;   // from <boost/beast.hpp>
@@ -395,49 +398,52 @@ class HttpSession :
   public:
     using Response = http::response<ResBody>;
     using Stream = SockStream;
+    using Request = http::request<ReqBody>;
 
   private:
     struct InUse
     {
-        std::shared_ptr<HttpSession> session;
-        InUse(std::shared_ptr<HttpSession> sess) : session(std::move(sess)) {}
+        std::weak_ptr<HttpSession> session;
+        InUse(std::weak_ptr<HttpSession> sess) : session(std::move(sess)) {}
         void resolve() {}
         void write() {}
         void read() {}
     };
     struct Idle
     {
-        std::shared_ptr<HttpSession> session;
-        Idle(std::shared_ptr<HttpSession> sess) : session(std::move(sess)) {}
+        std::weak_ptr<HttpSession> session;
+        Idle(std::weak_ptr<HttpSession> sess) : session(std::move(sess)) {}
         void resolve() {}
         void write()
         {
-            session->connectionState = InUse(session->shared_from_this());
-            session->stream->write(
-                session->req_, std::bind_front(&HttpSession::on_write,
-                                               session->shared_from_this()));
+            auto sessionptr = session.lock();
+            sessionptr->connectionState = InUse(session);
+            sessionptr->stream->write(
+                sessionptr->req_,
+                std::bind_front(&HttpSession::on_write, sessionptr));
         }
         void read()
         {
-            session->connectionState = InUse(session->shared_from_this());
-            session->stream->read(session->buffer_, session->res_,
-                                  std::bind_front(&HttpSession::on_read,
-                                                  session->shared_from_this()));
+            auto sessionptr = session.lock();
+            sessionptr->connectionState = InUse(session);
+            sessionptr->stream->read(
+                sessionptr->buffer_, sessionptr->res_,
+                std::bind_front(&HttpSession::on_read, sessionptr));
         }
     };
     struct Disconnected
     {
-        std::shared_ptr<HttpSession> session;
-        Disconnected(std::shared_ptr<HttpSession> sess) :
-            session(std::move(sess))
+        std::weak_ptr<HttpSession> session;
+        Disconnected(std::weak_ptr<HttpSession> sess) : session(std::move(sess))
         {}
         void resolve()
         {
-            session->connectionState = InUse(session->shared_from_this());
-            session->stream->resolve(
-                session->resolver_, session->host.data(), session->port.data(),
-                std::bind_front(&HttpSession::on_connect,
-                                session->shared_from_this()));
+            auto sessionptr = session.lock();
+            sessionptr->connectionState = InUse(session);
+            sessionptr->stream->resolve(
+                sessionptr->resolver_, sessionptr->host.data(),
+                sessionptr->port.data(),
+                std::bind_front(&HttpSession::on_connect, sessionptr));
         }
         void write()
         {
@@ -456,8 +462,8 @@ class HttpSession :
     tcp::resolver resolver_;
     std::shared_ptr<Stream> stream;
     beast::flat_buffer buffer_; // (Must persist between reads)
-    http::request<ReqBody> req_;
-    http::response<ResBody> res_;
+    Request req_;
+    Response res_;
     using ResponseHandler = std::function<void(const HttpExpected<Response>&)>;
 
     ResponseHandler responseHandler;
@@ -500,6 +506,10 @@ class HttpSession :
             }
         });
     }
+    ~HttpSession()
+    {
+        std::cout << "HttpSession destroyed" << std::endl;
+    }
     template <typename... Args>
     [[nodiscard]] static std::shared_ptr<HttpSession>
         create(const net::any_io_executor& ex, Args&&... args)
@@ -512,6 +522,7 @@ class HttpSession :
     {
         return std::make_shared<HttpSession>(ex, std::move(strm));
     }
+
     void setOption(ReqBody::value_type body)
     {
         req_.body() = std::move(body);
@@ -566,19 +577,30 @@ class HttpSession :
         },
             connectionState);
     }
-    // Start the asynchronous operation
-    void run()
+    void execute()
     {
         if (std::holds_alternative<std::monostate>(connectionState))
         {
-            req_.set(http::field::host, host);
-            req_.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
-            req_.keep_alive(keepAlive);
             connectionState = Disconnected(Base::shared_from_this());
             visit([](auto& state) { state.resolve(); });
             return;
         }
         visit([](auto& state) { state.write(); });
+    }
+    void run(Request&& req)
+    {
+        req_ = std::move(req);
+        req_.prepare_payload();
+        execute();
+    }
+    void run()
+    {
+        req_.set(http::field::host, host);
+        req_.set("port", port);
+        req_.set(http::field::user_agent, BOOST_BEAST_VERSION_STRING);
+        req_.keep_alive(keepAlive);
+        req_.prepare_payload();
+        execute();
     }
     void on_connect(beast::error_code ec)
     {
@@ -607,14 +629,16 @@ class HttpSession :
         {
             responseHandler(HttpExpected<Response>{res_, beast::error_code{}});
         }
-        res_ = http::response<ResBody>{};
-        if (!keepAlive)
+
+        if (!res_.keep_alive())
         {
             connectionState = std::monostate();
             stream->shutDown();
             return;
         }
-        res_.keep_alive(keepAlive);
+        using BodyValue = typename RequestBody::value_type;
+        req_.body() = BodyValue{};
+        res_ = http::response<ResBody>{};
     }
     bool inUse() const
     {
@@ -635,6 +659,10 @@ class HttpSession :
         auto copystream = stream->makeCopy();
         return HttpSession<Stream, NewReqBody, ResBody>::create(
             resolver_.get_executor(), std::move(copystream));
+    }
+    [[nodiscard]] http::request<ReqBody>&& takeRequest()
+    {
+        return std::move(req_);
     }
 };
 template <typename ReqBody = http::empty_body,
