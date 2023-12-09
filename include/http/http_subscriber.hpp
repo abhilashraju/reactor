@@ -32,7 +32,7 @@ class HttpSubscriber
         {}
         ~RetryRequest()
         {
-            std::cout << "RetryRequest destroyed" << std::endl;
+            REACTOR_LOG_INFO("RetryRequest destroyed");
         }
         void setRequest(Request&& r)
         {

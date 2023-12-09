@@ -1,6 +1,7 @@
 
 #pragma once
 #include "http_types.hpp"
+#include "logger/logger.hpp"
 
 #include <boost/asio/strand.hpp>
 #include <boost/beast/core.hpp>
@@ -519,7 +520,7 @@ class HttpSession :
     }
     ~HttpSession()
     {
-        std::cout << "HttpSession destroyed" << std::endl;
+        REACTOR_LOG_INFO("HttpSession destroyed");
     }
     template <typename... Args>
     [[nodiscard]] static std::shared_ptr<HttpSession>
