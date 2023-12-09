@@ -10,7 +10,14 @@ TEST(HttpSubscriberTest, SendEvent)
 
     // Create an instance of HttpSubscriber
     std::string destUrl = "https://localhost:8443/events";
+    ssl::context ctx{ssl::context::tlsv12_client};
+    ctx.set_verify_mode(ssl::verify_none);
     reactor::HttpSubscriber subscriber(executor, destUrl);
+    subscriber
+        .withPolicy(
+            HttpSubscriber::RetryPolicy{.maxRetries = 3, .retryDelay = 15})
+        .withSslContext(std::move(ctx))
+        .withPoolSize(1);
 
     // Define the expected data
     std::string data = R"(

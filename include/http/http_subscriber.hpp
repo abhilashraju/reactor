@@ -11,14 +11,29 @@ namespace reactor
 {
 class HttpSubscriber
 {
-    using Session = AsyncSslSession<http::string_body>;
-    using Request = Session::Request;
+  public:
     struct RetryPolicy
     {
         int maxRetries{3};
         unsigned retryCount{0};
         unsigned retryDelay{15};
+        bool retryNeeded() const
+        {
+            return maxRetries < 0 || retryCount < maxRetries;
+        }
+        void incrementRetryCount()
+        {
+            retryCount++;
+        }
+        auto getRetryDelay() const
+        {
+            return std::chrono::seconds(retryDelay);
+        }
     };
+
+  private:
+    using Session = AsyncSslSession<http::string_body>;
+    using Request = Session::Request;
     struct RetryRequest : std::enable_shared_from_this<RetryRequest>
     {
         Request req;
@@ -40,10 +55,10 @@ class HttpSubscriber
         }
         void waitAndRetry()
         {
-            if (policy.retryCount < policy.maxRetries)
+            if (policy.retryNeeded())
             {
-                policy.retryCount++;
-                timer.expires_after(std::chrono::seconds(policy.retryDelay));
+                policy.incrementRetryCount();
+                timer.expires_after(policy.getRetryDelay());
                 timer.async_wait([self = shared_from_this()](
                                      const boost::system::error_code& ec) {
                     if (!ec)
@@ -61,59 +76,20 @@ class HttpSubscriber
     {
         ctx.set_verify_mode(ssl::verify_none);
     }
-    void processResponse(std::shared_ptr<Session>& session,
-                         const HttpExpected<Session::Response>& response)
+    HttpSubscriber& withPolicy(const RetryPolicy& policy)
     {
-        // Process the response
-        const auto& res = response.response();
-        std::cout << "Response status: " << res.result_int() << std::endl;
-        std::cout << "Response body: " << res.body() << std::endl;
-        if (!res.keep_alive())
-        {
-            httpClientPool.release(session);
-        }
-        sendNext();
+        retryPolicy = policy;
+        return *this;
     }
-    void sendNext()
+    HttpSubscriber& withSslContext(ssl::context&& sslctx)
     {
-        if (eventBuffer.empty())
-        {
-            return;
-        }
-
-        auto next = std::move(eventBuffer.front());
-        eventBuffer.pop_front();
-        sendEvent(next);
+        ctx = std::move(sslctx);
+        return *this;
     }
-    void handleRetryResponse(std::weak_ptr<Session> session,
-                             std::shared_ptr<RetryRequest> retryRequest,
-                             const HttpExpected<Session::Response>& response)
+    HttpSubscriber& withPoolSize(std::size_t poolSize)
     {
-        auto ptr = session.lock();
-        if (response.isError())
-        {
-            std::cerr << "Error: " << response.error().message() << std::endl;
-            retryRequest->setRequest(ptr->takeRequest());
-            httpClientPool.release(ptr);
-            retryRequest->waitAndRetry();
-
-            return;
-        }
-        processResponse(ptr, response);
-    }
-    void handleResponse(std::weak_ptr<Session> session,
-                        const HttpExpected<Session::Response>& response)
-    {
-        auto ptr = session.lock();
-        if (response.isError())
-        {
-            std::cerr << "Error: " << response.error().message() << std::endl;
-            httpClientPool.release(ptr);
-            retryIfNeeded(ptr->takeRequest());
-            return;
-        }
-
-        processResponse(ptr, response);
+        httpClientPool.withPoolSize(poolSize);
+        return *this;
     }
     void sendEvent(const std::string& data)
     {
@@ -144,6 +120,62 @@ class HttpSubscriber
     }
 
   private:
+    void processResponse(std::shared_ptr<Session>& session,
+                         const HttpExpected<Session::Response>& response)
+    {
+        // Process the response
+        const auto& res = response.response();
+        REACTOR_LOG_INFO("Response status: {}", res.result_int());
+        REACTOR_LOG_INFO("Response body: {}", res.body());
+        if (!res.keep_alive())
+        {
+            httpClientPool.release(session);
+        }
+        sendNext();
+    }
+    void sendNext()
+    {
+        if (eventBuffer.empty())
+        {
+            return;
+        }
+
+        auto next = std::move(eventBuffer.front());
+        eventBuffer.pop_front();
+        sendEvent(next);
+    }
+    void handleRetryResponse(std::weak_ptr<Session> session,
+                             std::shared_ptr<RetryRequest> retryRequest,
+                             const HttpExpected<Session::Response>& response)
+    {
+        auto ptr = session.lock();
+        if (response.isError())
+        {
+            REACTOR_LOG_ERROR("Error: {}", response.error().message());
+            retryRequest->setRequest(ptr->takeRequest());
+            httpClientPool.release(ptr);
+            retryRequest->waitAndRetry();
+
+            return;
+        }
+        processResponse(ptr, response);
+    }
+    void handleResponse(std::weak_ptr<Session> session,
+                        const HttpExpected<Session::Response>& response)
+    {
+        auto ptr = session.lock();
+        if (response.isError())
+        {
+            REACTOR_LOG_ERROR("Error: {}", response.error().message());
+            httpClientPool.release(ptr);
+            retryIfNeeded(ptr->takeRequest());
+            return;
+        }
+
+        processResponse(ptr, response);
+    }
+
+  private:
     const net::any_io_executor& ioContext;
     std::string destUrl;
     HttpClientPool<Session> httpClientPool;
@@ -153,6 +185,10 @@ class HttpSubscriber
 
     void retryIfNeeded(Request&& req)
     {
+        if (!retryPolicy.retryNeeded())
+        {
+            return;
+        }
         auto retryRequest = std::make_shared<RetryRequest>(
             std::move(req), retryPolicy, ioContext);
         retryRequest->retryFunction =

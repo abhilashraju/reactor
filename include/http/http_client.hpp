@@ -520,7 +520,7 @@ class HttpSession :
     }
     ~HttpSession()
     {
-        REACTOR_LOG_INFO("HttpSession destroyed");
+        REACTOR_LOG_DEBUG("HttpSession destroyed");
     }
     template <typename... Args>
     [[nodiscard]] static std::shared_ptr<HttpSession>

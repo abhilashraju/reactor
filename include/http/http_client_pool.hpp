@@ -28,6 +28,11 @@ class HttpClientPool
         context(executor),
         poolSize(pool_size)
     {}
+    HttpClientPool& withPoolSize(std::size_t pool_size)
+    {
+        poolSize = pool_size;
+        return *this;
+    }
     template <typename... Args>
     std::shared_ptr<Session> acquire(auto intializer, Args&&... args)
     {
