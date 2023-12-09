@@ -13,9 +13,6 @@
 #include <iostream>
 #include <memory>
 #include <string>
-#define DISPLAY_REF_COUNT(X)                                                   \
-    std::cout << "Reference count: " << __FUNCTION__ << X.use_count()          \
-              << std::endl;
 namespace reactor
 {
 namespace beast = boost::beast;   // from <boost/beast.hpp>
@@ -93,6 +90,7 @@ struct SyncStream : public std::enable_shared_from_this<SyncStream<Stream>>
         }
         onReadHandler(ec, bytes_transferred);
     }
+    void monitorForError() {}
 };
 struct TcpStream : public SyncStream<beast::tcp_stream>
 {
@@ -273,6 +271,19 @@ struct ASyncStream : public std::enable_shared_from_this<ASyncStream<Stream>>
                          std::bind_front(&ASyncStream::on_read,
                                          Base::shared_from_this(),
                                          std::move(onReadHandler)));
+    }
+    void monitorForError()
+    {
+        lowestLayer().socket().async_wait(
+            boost::asio::ip::tcp::socket::wait_read,
+            std::bind_front(&ASyncStream::on_error, Base::shared_from_this()));
+    }
+    void on_error(const boost::system::error_code& ec)
+    {
+        if (ec)
+        {
+            fail(ec, "idle wait");
+        }
     }
 };
 struct AsyncTcpStream : public ASyncStream<beast::tcp_stream>
@@ -639,6 +650,7 @@ class HttpSession :
         using BodyValue = typename RequestBody::value_type;
         req_.body() = BodyValue{};
         res_ = http::response<ResBody>{};
+        stream->monitorForError();
     }
     bool inUse() const
     {

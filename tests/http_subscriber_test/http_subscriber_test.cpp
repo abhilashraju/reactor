@@ -5,6 +5,7 @@ using namespace reactor;
 TEST(HttpSubscriberTest, SendEvent)
 {
     net::io_context ioContext;
+
     auto executor = net::make_strand(ioContext);
 
     // Create an instance of HttpSubscriber
@@ -31,7 +32,14 @@ TEST(HttpSubscriberTest, SendEvent)
 )";
 
     // Call the sendEvent function
-    subscriber.sendEvent(data);
+    int i = 0;
+    while (i < 100)
+    {
+        auto newdata = data;
+        newdata.replace(newdata.find("TestID"), 6,
+                        "TestID" + std::to_string(i++));
+        subscriber.sendEvent(newdata);
+    }
 
     ioContext.run();
 }

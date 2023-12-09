@@ -17,7 +17,7 @@ class HttpSubscriber
     {
         int maxRetries{3};
         unsigned retryCount{0};
-        unsigned retryDelay{5};
+        unsigned retryDelay{15};
     };
     struct RetryRequest : std::enable_shared_from_this<RetryRequest>
     {
@@ -149,7 +149,7 @@ class HttpSubscriber
     HttpClientPool<Session> httpClientPool;
     ssl::context ctx{ssl::context::tlsv12_client};
     RetryPolicy retryPolicy;
-    boost::circular_buffer<std::string> eventBuffer{10};
+    boost::circular_buffer<std::string> eventBuffer{100};
 
     void retryIfNeeded(Request&& req)
     {
