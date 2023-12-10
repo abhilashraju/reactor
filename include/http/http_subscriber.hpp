@@ -34,6 +34,7 @@ class HttpSubscriber
   private:
     using Session = AsyncSslSession<http::string_body>;
     using Request = Session::Request;
+    using Response = Session::Response;
     struct RetryRequest : std::enable_shared_from_this<RetryRequest>
     {
         Request req;
@@ -86,6 +87,12 @@ class HttpSubscriber
         ctx = std::move(sslctx);
         return *this;
     }
+    HttpSubscriber& withSuccessHandler(
+        std::function<void(const Request&, const Response&)>&& handler)
+    {
+        successHandler = std::move(handler);
+        return *this;
+    }
     HttpSubscriber& withPoolSize(std::size_t poolSize)
     {
         httpClientPool.withPoolSize(poolSize);
@@ -120,13 +127,17 @@ class HttpSubscriber
     }
 
   private:
-    void processResponse(std::shared_ptr<Session>& session,
+    void processResponse(std::shared_ptr<Session>& session, const Request& req,
                          const HttpExpected<Session::Response>& response)
     {
         // Process the response
         const auto& res = response.response();
         REACTOR_LOG_INFO("Response status: {}", res.result_int());
         REACTOR_LOG_INFO("Response body: {}", res.body());
+        if (successHandler)
+        {
+            successHandler(req, res);
+        }
         if (!res.keep_alive())
         {
             httpClientPool.release(session);
@@ -146,6 +157,7 @@ class HttpSubscriber
     }
     void handleRetryResponse(std::weak_ptr<Session> session,
                              std::shared_ptr<RetryRequest> retryRequest,
+                             const Request& req,
                              const HttpExpected<Session::Response>& response)
     {
         auto ptr = session.lock();
@@ -158,9 +170,9 @@ class HttpSubscriber
 
             return;
         }
-        processResponse(ptr, response);
+        processResponse(ptr, req, response);
     }
-    void handleResponse(std::weak_ptr<Session> session,
+    void handleResponse(std::weak_ptr<Session> session, const Request& req,
                         const HttpExpected<Session::Response>& response)
     {
         auto ptr = session.lock();
@@ -172,7 +184,7 @@ class HttpSubscriber
             return;
         }
 
-        processResponse(ptr, response);
+        processResponse(ptr, req, response);
     }
 
   private:
@@ -182,6 +194,7 @@ class HttpSubscriber
     ssl::context ctx{ssl::context::tlsv12_client};
     RetryPolicy retryPolicy;
     boost::circular_buffer<std::string> eventBuffer{100};
+    std::function<void(const Request&, const Response&)> successHandler;
 
     void retryIfNeeded(Request&& req)
     {

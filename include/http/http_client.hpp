@@ -1,6 +1,6 @@
 
 #pragma once
-#include "http_types.hpp"
+#include "http/http_expected.hpp"
 #include "logger/logger.hpp"
 
 #include <boost/asio/strand.hpp>
@@ -374,33 +374,7 @@ struct AsyncSslStream : public ASyncStream<beast::ssl_stream<beast::tcp_stream>>
         return AsyncSslStream(mStream.get_executor(), sslCtx);
     }
 };
-template <typename Response>
-struct HttpExpected
-{
-    Response resp;
-    beast::error_code ec{};
-    bool isError() const
-    {
-        return ec.operator bool();
-    }
-    auto error() const
-    {
-        return ec;
-    }
-    const auto& response() const
-    {
-        return resp;
-    }
-    std::string to_string() const
-    {
-        return resp.body();
-    }
-};
-template <typename Response>
-inline std::string to_string(const HttpExpected<Response>& myStruct)
-{
-    return myStruct.to_string();
-}
+
 template <typename SockStream, typename ReqBody = http::empty_body,
           typename ResBody = http::string_body>
 class HttpSession :
@@ -411,6 +385,7 @@ class HttpSession :
     using Response = http::response<ResBody>;
     using Stream = SockStream;
     using Request = http::request<ReqBody>;
+    using HttpExpected = HttpExpected<Response>;
 
   private:
     struct InUse
@@ -476,7 +451,8 @@ class HttpSession :
     beast::flat_buffer buffer_; // (Must persist between reads)
     Request req_;
     Response res_;
-    using ResponseHandler = std::function<void(const HttpExpected<Response>&)>;
+    using ResponseHandler =
+        std::function<void(const Request&, const HttpExpected&)>;
 
     ResponseHandler responseHandler;
     std::string host;
@@ -498,11 +474,11 @@ class HttpSession :
         stream(std::make_shared<Stream>(ex, std::forward<Args>(args)...))
     {
         stream->setErrorHandler([this](beast::error_code ec, const char* what) {
-            std::cerr << what << ": " << ec.message() << "\n";
+            REACTOR_LOG_DEBUG("{} : {}", what, ec.message());
             if (responseHandler)
             {
                 http::response<ResBody> res{http::status::not_found, 11};
-                responseHandler(HttpExpected<Response>{res, ec});
+                responseHandler(req_, HttpExpected{.resp = res, .ec = ec});
             }
         });
     }
@@ -510,11 +486,11 @@ class HttpSession :
         resolver_(ex), stream(std::make_shared<Stream>(std::move(strm)))
     {
         stream->setErrorHandler([this](beast::error_code ec, const char* what) {
-            std::cerr << what << ": " << ec.message() << "\n";
+            REACTOR_LOG_DEBUG("{} : {}", what, ec.message());
             if (responseHandler)
             {
                 http::response<ResBody> res{http::status::not_found, 11};
-                responseHandler(HttpExpected<Response>{res, ec});
+                responseHandler(req_, HttpExpected{res, ec});
             }
         });
     }
@@ -639,7 +615,8 @@ class HttpSession :
         connectionState = Idle(Base::shared_from_this());
         if (responseHandler)
         {
-            responseHandler(HttpExpected<Response>{res_, beast::error_code{}});
+            responseHandler(req_,
+                            HttpExpected{std::move(res_), beast::error_code{}});
         }
 
         if (!res_.keep_alive())
@@ -648,9 +625,6 @@ class HttpSession :
             stream->shutDown();
             return;
         }
-        using BodyValue = typename RequestBody::value_type;
-        req_.body() = BodyValue{};
-        res_ = http::response<ResBody>{};
         stream->monitorForError();
     }
     bool inUse() const
@@ -678,6 +652,11 @@ class HttpSession :
         return std::move(req_);
     }
 };
+template <typename Response>
+inline std::string to_string(const HttpExpected<Response>& myStruct)
+{
+    return myStruct.to_string();
+}
 template <typename ReqBody = http::empty_body,
           typename ResBody = http::string_body>
 using AsyncSslSession = HttpSession<AsyncSslStream, ReqBody, ResBody>;

@@ -44,8 +44,9 @@ struct HttpSource : FluxBase<Res>::SourceHandler
     void next(std::function<void(Res)> consumer) override
     {
         decrement();
-        session->setResponseHandler([consumer = std::move(consumer)](
-                                        const Res& res) { consumer(res); });
+        session->setResponseHandler(
+            [consumer = std::move(consumer)](
+                const Session::Request&, const Res& res) { consumer(res); });
         session->setOptions(KeepAlive{forever});
         session->run();
     }
@@ -96,8 +97,7 @@ template <typename SourceType,
           typename Session = HttpSession<AsyncSslStream, http::string_body>>
 struct HttpSink
 {
-    using Response =
-        HttpExpected<http::response<typename Session::ResponseBody>>;
+    using Response = Session::HttpExpected;
 
     using ResponseHandler = std::function<void(const Response&, bool&)>;
     std::shared_ptr<Session> session;
@@ -124,7 +124,8 @@ struct HttpSink
     void operator()(const SourceType& res, auto&& requestNext)
     {
         session->setResponseHandler(
-            [this, requestNext = std::move(requestNext)](const Response& res) {
+            [this, requestNext = std::move(requestNext)](
+                const Session::Request&, const Response& res) {
             bool neednext{false};
             if (onDataHandler)
             {

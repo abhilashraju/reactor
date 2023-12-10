@@ -17,7 +17,10 @@ TEST(HttpSubscriberTest, SendEvent)
         .withPolicy(
             HttpSubscriber::RetryPolicy{.maxRetries = 3, .retryDelay = 15})
         .withSslContext(std::move(ctx))
-        .withPoolSize(1);
+        .withPoolSize(1)
+        .withSuccessHandler([](const auto& req, const auto& res) {
+        std::cout << "Success: " << req.body() << std::endl;
+    });
 
     // Define the expected data
     std::string data = R"(

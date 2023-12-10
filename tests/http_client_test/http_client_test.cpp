@@ -29,7 +29,8 @@ TEST(HttpSessionTest, RunTest)
 
     // Set the response handler
     session->setResponseHandler(
-        [](const HttpExpected<Session::Response>& response) {
+        [](const Session::Request&,
+           const typename Session::HttpExpected& response) {
         // Handle the response
         if (response.isError())
         {
