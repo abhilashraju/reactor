@@ -339,10 +339,11 @@ struct AsyncSslStream : public ASyncStream<beast::ssl_stream<beast::tcp_stream>>
             ec = {};
         }
         if (ec)
-            return fail(ec, "shutdown");
+            return REACTOR_LOG_INFO("shutdown failed");
 
         // If we get here then the connection is closed
         // gracefully
+        lowestLayer().close();
     }
     void on_handshake(std::function<void(beast::error_code)> connectionHandler,
                       beast::error_code ec)
@@ -472,43 +473,43 @@ class HttpSession :
     HttpSession(const net::any_io_executor& ex, Args&&... args) :
         resolver_(ex),
         stream(std::make_shared<Stream>(ex, std::forward<Args>(args)...))
-    {
-        stream->setErrorHandler([this](beast::error_code ec, const char* what) {
-            REACTOR_LOG_DEBUG("{} : {}", what, ec.message());
-            if (responseHandler)
-            {
-                http::response<ResBody> res{http::status::not_found, 11};
-                responseHandler(req_, HttpExpected{.resp = res, .ec = ec});
-            }
-        });
-    }
+    {}
     HttpSession(const net::any_io_executor& ex, Stream&& strm) :
         resolver_(ex), stream(std::make_shared<Stream>(std::move(strm)))
-    {
-        stream->setErrorHandler([this](beast::error_code ec, const char* what) {
-            REACTOR_LOG_DEBUG("{} : {}", what, ec.message());
-            if (responseHandler)
-            {
-                http::response<ResBody> res{http::status::not_found, 11};
-                responseHandler(req_, HttpExpected{res, ec});
-            }
-        });
-    }
+    {}
     ~HttpSession()
     {
         REACTOR_LOG_DEBUG("HttpSession destroyed");
+    }
+    void setErrorHandler()
+    {
+        stream->setErrorHandler([self = Base::shared_from_this()](
+                                    beast::error_code ec, const char* what) {
+            REACTOR_LOG_DEBUG("{} : {}", what, ec.message());
+            if (self->responseHandler)
+            {
+                http::response<ResBody> res{http::status::not_found, 11};
+                self->responseHandler(self->req_, HttpExpected{res, ec});
+            }
+            self->stream->shutDown();
+        });
     }
     template <typename... Args>
     [[nodiscard]] static std::shared_ptr<HttpSession>
         create(const net::any_io_executor& ex, Args&&... args)
     {
-        return std::make_shared<HttpSession>(ex, std::forward<Args>(args)...);
+        auto session =
+            std::make_shared<HttpSession>(ex, std::forward<Args>(args)...);
+        session->setErrorHandler();
+        return session;
     }
 
     [[nodiscard]] static std::shared_ptr<HttpSession>
         create(const net::any_io_executor& ex, Stream&& strm)
     {
-        return std::make_shared<HttpSession>(ex, std::move(strm));
+        auto session = std::make_shared<HttpSession>(ex, std::move(strm));
+        session->setErrorHandler();
+        return session;
     }
 
     void setOption(ReqBody::value_type body)
