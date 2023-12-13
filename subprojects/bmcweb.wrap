@@ -1,0 +1,6 @@
+[wrap-git]
+directory = bmcweb
+
+url = git@github.com:openbmc/openbmc.git
+revision=main
+

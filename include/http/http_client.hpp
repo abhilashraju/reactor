@@ -339,10 +339,9 @@ struct AsyncSslStream : public ASyncStream<beast::ssl_stream<beast::tcp_stream>>
             ec = {};
         }
         if (ec)
-            return REACTOR_LOG_INFO("shutdown failed");
-
-        // If we get here then the connection is closed
-        // gracefully
+        {
+            CLIENT_LOG_INFO("shutdown failed");
+        }
         lowestLayer().close();
     }
     void on_handshake(std::function<void(beast::error_code)> connectionHandler,
@@ -479,13 +478,13 @@ class HttpSession :
     {}
     ~HttpSession()
     {
-        REACTOR_LOG_DEBUG("HttpSession destroyed");
+        CLIENT_LOG_DEBUG("HttpSession destroyed");
     }
     void setErrorHandler()
     {
         stream->setErrorHandler([self = Base::shared_from_this()](
                                     beast::error_code ec, const char* what) {
-            REACTOR_LOG_DEBUG("{} : {}", what, ec.message());
+            CLIENT_LOG_DEBUG("{} : {}", what, ec.message());
             if (self->responseHandler)
             {
                 http::response<ResBody> res{http::status::not_found, 11};

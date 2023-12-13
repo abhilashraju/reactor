@@ -25,4 +25,5 @@ reactor_dep = declare_dependency(
 if get_option('enable-tests')
   subdir('tests')
 endif
-#subdir(examples)
+subdir('examples')
+subdir('examples/plugins/redfish_events')

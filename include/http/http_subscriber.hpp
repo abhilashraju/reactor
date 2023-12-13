@@ -48,7 +48,7 @@ class HttpSubscriber
         {}
         ~RetryRequest()
         {
-            REACTOR_LOG_INFO("RetryRequest destroyed");
+            CLIENT_LOG_INFO("RetryRequest destroyed");
         }
         void setRequest(Request&& r)
         {
@@ -132,8 +132,8 @@ class HttpSubscriber
     {
         // Process the response
         const auto& res = response.response();
-        REACTOR_LOG_INFO("Response status: {}", res.result_int());
-        REACTOR_LOG_INFO("Response body: {}", res.body());
+        CLIENT_LOG_INFO("Response status: {}", res.result_int());
+        CLIENT_LOG_INFO("Response body: {}", res.body());
         if (successHandler)
         {
             successHandler(req, res);
@@ -163,7 +163,7 @@ class HttpSubscriber
         auto ptr = session.lock();
         if (response.isError())
         {
-            REACTOR_LOG_ERROR("Error: {}", response.error().message());
+            CLIENT_LOG_ERROR("Error: {}", response.error().message());
             retryRequest->setRequest(ptr->takeRequest());
             httpClientPool.release(ptr);
             retryRequest->waitAndRetry();
@@ -178,7 +178,7 @@ class HttpSubscriber
         auto ptr = session.lock();
         if (response.isError())
         {
-            REACTOR_LOG_ERROR("Error: {}", response.error().message());
+            CLIENT_LOG_ERROR("Error: {}", response.error().message());
             httpClientPool.release(ptr);
             retryIfNeeded(ptr->takeRequest());
             return;

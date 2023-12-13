@@ -63,3 +63,9 @@ inline Logger<std::ostream>& getLogger()
 #define REACTOR_LOG_ERROR(message, ...)                                        \
     getLogger().log(__FILE__, __LINE__, LogLevel::ERROR,                       \
                     std::format("{} :" message, "Error", ##__VA_ARGS__))
+
+#define CLIENT_LOG_DEBUG(message, ...) REACTOR_LOG_DEBUG(message, ##__VA_ARGS__)
+#define CLIENT_LOG_INFO(message, ...) REACTOR_LOG_INFO(message, ##__VA_ARGS__)
+#define CLIENT_LOG_WARNING(message, ...)                                       \
+    REACTOR_LOG_WARNING(message, ##__VA_ARGS__)
+#define CLIENT_LOG_ERROR(message, ...) REACTOR_LOG_ERROR(message, ##__VA_ARGS__)
