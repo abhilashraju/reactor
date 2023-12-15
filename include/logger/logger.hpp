@@ -52,17 +52,21 @@ inline Logger<std::ostream>& getLogger()
 
 // Macros for clients to use logger
 #define REACTOR_LOG_DEBUG(message, ...)                                        \
-    getLogger().log(__FILE__, __LINE__, LogLevel::DEBUG,                       \
-                    std::format("{} :" message, "Debug", ##__VA_ARGS__))
+    reactor::getLogger().log(                                                  \
+        __FILE__, __LINE__, reactor::LogLevel::DEBUG,                          \
+        std::format("{} :" message, "Debug", ##__VA_ARGS__))
 #define REACTOR_LOG_INFO(message, ...)                                         \
-    getLogger().log(__FILE__, __LINE__, LogLevel::INFO,                        \
-                    std::format("{} :" message, "Info", ##__VA_ARGS__))
+    reactor::getLogger().log(                                                  \
+        __FILE__, __LINE__, reactor::LogLevel::INFO,                           \
+        std::format("{} :" message, "Info", ##__VA_ARGS__))
 #define REACTOR_LOG_WARNING(message, ...)                                      \
-    getLogger().log(__FILE__, __LINE__, LogLevel::WARNING,                     \
-                    std::format("{} :" message, "Warning", ##__VA_ARGS__))
+    reactor::getLogger().log(                                                  \
+        __FILE__, __LINE__, reactor::LogLevel::WARNING,                        \
+        std::format("{} :" message, "Warning", ##__VA_ARGS__))
 #define REACTOR_LOG_ERROR(message, ...)                                        \
-    getLogger().log(__FILE__, __LINE__, LogLevel::ERROR,                       \
-                    std::format("{} :" message, "Error", ##__VA_ARGS__))
+    reactor::getLogger().log(                                                  \
+        __FILE__, __LINE__, reactor::LogLevel::ERROR,                          \
+        std::format("{} :" message, "Error", ##__VA_ARGS__))
 
 #define CLIENT_LOG_DEBUG(message, ...) REACTOR_LOG_DEBUG(message, ##__VA_ARGS__)
 #define CLIENT_LOG_INFO(message, ...) REACTOR_LOG_INFO(message, ##__VA_ARGS__)
