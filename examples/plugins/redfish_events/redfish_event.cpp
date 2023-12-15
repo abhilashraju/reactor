@@ -1,7 +1,7 @@
 #include "bmcwebhook.h"
 
 #include <boost/dll/alias.hpp> // for BOOST_DLL_ALIAS
-
+#include<memory>
 #include <iostream>
 namespace BmcWeb
 {
@@ -15,15 +15,15 @@ class MyBmcHook : public BmcWebHooks
     {
         return "aggregator";
     }
-    void registerRoutes()
+    std::string registerRoutes()
     {
-        std::cout << "Registering aggregator routes" << std::endl;
+        return "Registering aggregator routes";
     }
 
     // Factory method
-    static std::shared_ptr<MyBmcHook> create()
+    static std::shared_ptr<BmcWebHooks> create()
     {
-        return std::shared_ptr<MyBmcHook>(new MyBmcHook());
+        return std::shared_ptr<BmcWebHooks>(new MyBmcHook());
     }
 };
 

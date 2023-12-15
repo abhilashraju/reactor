@@ -11,7 +11,7 @@ project(
 REACTOR_ARGS=['-DBOOST_URL_NO_SOURCE_LOCATION']
 
 openssl_dep = dependency('openssl', version: '>=1.1.1')
-boost_dep = dependency('boost',modules: ['coroutine'])
+boost_dep = dependency('boost',modules: ['coroutine','url'])
 json_dep = dependency('nlohmann_json')
 gtest = subproject('gtest')
 chaibeast=subproject('chaibeast')

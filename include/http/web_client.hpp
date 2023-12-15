@@ -2,7 +2,6 @@
 #include "core/reactor.hpp"
 #include "http/http_client.hpp"
 
-#include <boost/url/src.hpp>
 #include <boost/url/url.hpp>
 #include <boost/url/url_view.hpp>
 

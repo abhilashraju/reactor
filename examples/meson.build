@@ -1,6 +1,6 @@
+plugin_includes=['plugins/redfish_events']
 
-boost_dep = dependency('boost',modules: ['filesystem'])
-plugin_includes = include_directories(['plugins/redfish_events'])
+# Specify the dependency when building the executable
 executable('bmcapp', 'bmcapp.cpp',
            include_directories : [core_includes,plugin_includes],
            dependencies : [boost_dep],
