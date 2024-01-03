@@ -6,7 +6,7 @@ TEST(HttpSubscriberTest, SendEvent)
 {
     net::io_context ioContext;
 
-    auto executor = net::make_strand(ioContext);
+    auto executor = ioContext.get_executor();
 
     // Create an instance of HttpSubscriber
     std::string destUrl = "https://localhost:8443/events";

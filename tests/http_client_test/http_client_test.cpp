@@ -7,7 +7,7 @@ TEST(HttpSessionTest, RunTest)
 {
     // Create an io_context and executor
     net::io_context ioContext;
-    auto executor = net::make_strand(ioContext);
+    auto executor = ioContext.get_executor();
 
     // Create an HttpSession object
     using Session = AsyncSslSession<http::string_body>;
