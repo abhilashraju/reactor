@@ -1,3 +1,4 @@
+#pragma once
 #include "http_client_pool.hpp"
 
 #include <boost/circular_buffer.hpp>
@@ -23,6 +24,10 @@ class HttpSubscriber
         void incrementRetryCount()
         {
             retryCount++;
+        }
+        void decrementRetryCount()
+        {
+            retryCount--;
         }
         auto getRetryDelay() const
         {
@@ -102,6 +107,12 @@ class HttpSubscriber
         httpClientPool.withPoolSize(poolSize);
         return *this;
     }
+    HttpSubscriber& withHeaders(Headers aheaders)
+    {
+        headers = std::move(aheaders);
+        return *this;
+    }
+
     void sendEvent(const std::string& data)
     {
         // Acquire a session from the HttpClientPool
@@ -114,7 +125,7 @@ class HttpSubscriber
             CLIENT_LOG_INFO("host: {}, port: {}, path: {}", h, p, path);
             session->setOptions(Host{h}, Port{p}, Target{path}, Version{11},
                                 Verb{http::verb::post}, KeepAlive{true},
-                                ContentType{"application/json"});
+                                ContentType{"application/json"}, headers);
 
             session->setResponseHandler(
                 std::bind_front(&HttpSubscriber::handleResponse, this,
@@ -197,6 +208,7 @@ class HttpSubscriber
     std::string destUrl;
     HttpClientPool<Session> httpClientPool;
     ssl::context ctx{ssl::context::tlsv12_client};
+    Headers headers;
     RetryPolicy retryPolicy;
     boost::circular_buffer<std::string> eventBuffer{100};
     std::function<void(const Request&, const Response&)> successHandler;
@@ -215,15 +227,25 @@ class HttpSubscriber
             {
                 auto session = httpClientPool.acquire(
                     [&retryRequest, this](std::shared_ptr<Session>& session) {
+                    session->setOption(retryRequest->req.base());
                     session->setOption(
                         Host{retryRequest->req.base()[http::field::host]});
                     session->setOption(Port{retryRequest->req.base()["port"]});
+
                     session->setResponseHandler(std::bind_front(
                         &HttpSubscriber::handleRetryResponse, this,
                         std::weak_ptr(session), retryRequest));
                 },
                     ctx);
-                session->run(std::move(retryRequest->req));
+                if (session)
+                { // got free session from pool
+                    session->run(std::move(retryRequest->req));
+                    return;
+                }
+                // failed to get a session . So retry again by reducing the
+                // retry count
+                retryRequest->policy.decrementRetryCount();
+                retryRequest->waitAndRetry();
             }
         };
         retryRequest->waitAndRetry();

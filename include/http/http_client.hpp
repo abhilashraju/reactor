@@ -32,6 +32,7 @@ struct SyncStream : public std::enable_shared_from_this<SyncStream<Stream>>
 {
   protected:
     Stream mStream;
+    bool shutDownCalled{false};
 
   protected:
     using ErrorHandler = std::function<void(beast::error_code, const char*)>;
@@ -68,6 +69,10 @@ struct SyncStream : public std::enable_shared_from_this<SyncStream<Stream>>
             return fail(ec, "resolve");
         }
         on_resolve(std::move(handler), result);
+    }
+    bool closed() const
+    {
+        return shutDownCalled;
     }
     virtual void shutDown() = 0;
     template <typename Body>
@@ -118,9 +123,10 @@ struct TcpStream : public SyncStream<beast::tcp_stream>
 
   public:
     TcpStream(net::any_io_executor ex) : SyncStream(beast::tcp_stream(ex)) {}
-
+    TcpStream(TcpStream&& stream) : SyncStream(std::move(stream.mStream)){};
     void shutDown() override
     {
+        shutDownCalled = true;
         lowestLayer().close();
     }
     TcpStream makeCopy()
@@ -162,8 +168,11 @@ struct SslStream : public SyncStream<beast::ssl_stream<beast::tcp_stream>>
     SslStream(net::any_io_executor ex, ssl::context& ctx) :
         SyncStream(beast::ssl_stream<beast::tcp_stream>(ex, ctx)), sslCtx(ctx)
     {}
+    SslStream(SslStream&& stream) :
+        SyncStream(std::move(stream.mStream)), sslCtx(stream.sslCtx){};
     void shutDown() override
     {
+        shutDownCalled = true;
         lowestLayer().expires_after(std::chrono::seconds(30));
         beast::error_code ec{};
         // Gracefully close the stream
@@ -177,8 +186,10 @@ struct SslStream : public SyncStream<beast::ssl_stream<beast::tcp_stream>>
         // If we get here then the connection is closed
         // gracefully
     }
-    // SslStream makeCopy() { return SslStream(mStream.get_executor(), sslCtx);
-    // }
+    SslStream makeCopy()
+    {
+        return SslStream(mStream.get_executor(), sslCtx);
+    }
 };
 
 template <typename Stream>
@@ -188,6 +199,7 @@ struct ASyncStream : public std::enable_shared_from_this<ASyncStream<Stream>>
 
   protected:
     Stream mStream;
+    bool shutDownCalled{false};
 
   protected:
     using ErrorHandler = std::function<void(beast::error_code, const char*)>;
@@ -259,6 +271,10 @@ struct ASyncStream : public std::enable_shared_from_this<ASyncStream<Stream>>
                                       Base::shared_from_this(),
                                       std::move(handler)));
     }
+    bool closed() const
+    {
+        return shutDownCalled;
+    }
     virtual void shutDown() = 0;
     template <typename Body>
     void write(
@@ -310,8 +326,11 @@ struct AsyncTcpStream : public ASyncStream<beast::tcp_stream>
   public:
     AsyncTcpStream(net::any_io_executor ex) : ASyncStream(beast::tcp_stream(ex))
     {}
+    AsyncTcpStream(AsyncTcpStream&& stream) :
+        ASyncStream(std::move(stream.mStream)){};
     void shutDown()
     {
+        shutDownCalled = true;
         stream().close();
     }
     AsyncTcpStream makeCopy()
@@ -367,9 +386,11 @@ struct AsyncSslStream : public ASyncStream<beast::ssl_stream<beast::tcp_stream>>
     AsyncSslStream(net::any_io_executor ex, ssl::context& ctx) :
         ASyncStream(beast::ssl_stream<beast::tcp_stream>(ex, ctx)), sslCtx(ctx)
     {}
-
+    AsyncSslStream(AsyncSslStream&& stream) :
+        ASyncStream(std::move(stream.mStream)), sslCtx(stream.sslCtx){};
     void shutDown()
     {
+        shutDownCalled = true;
         // Set a timeout on the operation
         beast::get_lowest_layer(stream()).expires_after(
             std::chrono::seconds(30));
@@ -503,7 +524,10 @@ class HttpSession :
                 http::response<ResBody> res{http::status::not_found, 11};
                 responseHandler(req_, HttpExpected{res, ec});
             }
-            stream->shutDown();
+            if (stream && !stream->closed())
+            {
+                stream->shutDown();
+            }
         });
     }
     template <typename... Args>
@@ -545,6 +569,13 @@ class HttpSession :
     {
         req_.method(v);
     }
+    void setOption(const Headers& h)
+    {
+        for (auto& header : h)
+        {
+            req_.set(header.key, header.value);
+        }
+    }
     void setOption(Version v)
     {
         req_.version(v);
@@ -556,6 +587,16 @@ class HttpSession :
     void setOption(ContentType t)
     {
         req_.set(http::field::content_type, t.type.data());
+    }
+    void setOption(const Request::header_type& headers)
+    {
+        for (auto& header : headers)
+        {
+            if (header.name() != http::field::unknown)
+            {
+                req_.set(header.name(), header.value());
+            }
+        }
     }
     template <typename... Options>
     void setOptions(Options... opts)
@@ -632,8 +673,8 @@ class HttpSession :
         bool keepAlive = res_.keep_alive();
         if (responseHandler)
         {
-            //   responseHandler(req_, HttpExpected{std::move(res_),
-            //   beast::error_code{}});
+            responseHandler(req_,
+                            HttpExpected{std::move(res_), beast::error_code{}});
         }
 
         if (!keepAlive)

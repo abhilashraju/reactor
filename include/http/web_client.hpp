@@ -217,7 +217,7 @@ struct WebClient
         template <typename... Args>
         WebClientBuilder& withSession(auto ex, Args&&... args)
         {
-            session = Session::create(ex); //, std::forward<Args>(args)...);
+            session = Session::create(ex, std::forward<Args>(args)...);
             return *this;
         }
         WebClientBuilder& withEndpoint(const std::string& url)

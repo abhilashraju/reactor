@@ -4,6 +4,13 @@
 #include <string>
 namespace reactor
 {
+struct Header
+{
+    std::string key;
+    std::string value;
+};
+using Headers = std::vector<Header>;
+
 struct Port
 {
     std::string port;
