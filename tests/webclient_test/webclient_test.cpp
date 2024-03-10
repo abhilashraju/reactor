@@ -103,20 +103,20 @@ TEST(webclient, simple_mono_post)
     net::io_context ioc;
     auto ex = net::make_strand(ioc);
     http::string_body::value_type body = "test value";
+    nlohmann::json j = {{"mytext", "test value"}};
     ssl::context ctx{ssl::context::tlsv12_client};
     ctx.set_verify_mode(ssl::verify_none);
-    auto mono = WebClient<AsyncSslStream, http::string_body>::builder()
-                    .withSession(ex, ctx)
+    auto mono = WebClient<AsyncTcpStream, http::string_body>::builder()
+                    .withSession(ex)
                     .withEndpoint("https://127.0.0.1:8081/testpost")
                     .create()
                     .post()
-                    .withBody(std::move(body))
+                    .withBody(std::move(j))
                     .toMono();
-    mono->subscribe([](auto v) mutable {
-        if (!v.isError())
-        {
-            EXPECT_EQ(v.response().body(), "test value");
-        }
+
+    mono->asJson([](auto v) {
+        nlohmann::json newj = {{"mytext", "test value"}};
+        EXPECT_EQ(v.response().dump(), newj.dump());
     });
     ioc.run();
 }

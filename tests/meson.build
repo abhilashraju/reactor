@@ -8,7 +8,7 @@ chaibeast_dep=chaibeast.get_variable('chaibeast_dep')
 test_main = files('tests_main.cc')
 
 test_deps = [
-    gtest_dep,chaibeast_dep
+    gtest_dep,chaibeast_dep,json_dep
 ]
 
 test_dep_libs = [

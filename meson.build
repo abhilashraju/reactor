@@ -5,7 +5,7 @@ project(
   meson_version: '>=0.58.0',
   default_options: [
     'warning_level=3',
-    'cpp_std=c++20',
+    'cpp_std=c++23',
   ])
 
 REACTOR_ARGS=['-DBOOST_URL_NO_SOURCE_LOCATION']
@@ -20,7 +20,7 @@ chaibeast=subproject('chaibeast')
 core_includes = include_directories(['./include'])
 reactor_dep = declare_dependency(
 	include_directories : core_includes,
-	dependencies : [dependency('threads'),openssl_dep,boost_dep]
+	dependencies : [dependency('threads'),openssl_dep,boost_dep,json_dep]
 )
 if get_option('enable-tests')
   subdir('tests')

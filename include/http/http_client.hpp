@@ -576,6 +576,10 @@ class HttpSession :
             req_.set(header.key, header.value);
         }
     }
+    void setOption(const Header& h)
+    {
+        req_.set(header.key, header.value);
+    }
     void setOption(Version v)
     {
         req_.version(v);

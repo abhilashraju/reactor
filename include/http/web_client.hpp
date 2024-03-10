@@ -4,7 +4,9 @@
 
 #include <boost/url/url.hpp>
 #include <boost/url/url_view.hpp>
+#include <nlohmann/json.hpp>
 
+#include <expected>
 #include <numeric>
 #include <ranges>
 namespace reactor
@@ -85,6 +87,29 @@ struct HttpFluxBase : FluxBase<HttpExpected<http::response<Body>>>
         auto src = new HttpSource<SourceType, Session>(session, 1, flux);
         auto m = std::make_shared<HttpFluxBase>(src);
         return m;
+    }
+    template <typename Handler>
+    void asJson(Handler h)
+    {
+        Base::subscribe([h = std::move(h)](auto v, auto reqNext) mutable {
+            try
+            {
+                if (!v.isError())
+                {
+                    h(HttpExpected<nlohmann::json>{
+                        nlohmann::json::parse(v.response().body()),
+                        beast::error_code{}});
+                    reqNext(false);
+                    return;
+                }
+            }
+            catch (const std::exception& e)
+            {
+                CLIENT_LOG_ERROR("Error in parsing json: {}", e.what());
+            }
+            h(HttpExpected<nlohmann::json>{nlohmann::json{},
+                                           beast::http::error::bad_value});
+        });
     }
 };
 template <typename Body>
@@ -271,6 +296,11 @@ struct WebClient
         session->setOption(std::move(body));
         return *this;
     }
+    WebClient& withBody(nlohmann::json&& body)
+    {
+        session->setOption(typename ReqBody::value_type(body.dump()));
+        return *this;
+    }
     WebClient& withContentType(ContentType type)
     {
         session->setOption(std::move(type));
@@ -279,6 +309,10 @@ struct WebClient
 
     std::shared_ptr<HttpFlux<ResBody>> toFlux()
     {
+        session->setOption(port);
+        session->setOption(host);
+        session->setOption(target);
+        session->setOption(verb);
         auto m2 = HttpFlux<ResBody>::makeShared(std::move(session));
         return m2;
     }
