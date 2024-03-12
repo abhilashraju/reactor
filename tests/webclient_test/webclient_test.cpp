@@ -116,7 +116,7 @@ TEST(webclient, simple_mono_post)
 
     mono->asJson([](auto v) {
         nlohmann::json newj = {{"mytext", "test value"}};
-        EXPECT_EQ(v.response().dump(), newj.dump());
+        EXPECT_EQ(v.response().data().dump(), newj.dump());
     });
     ioc.run();
 }

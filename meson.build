@@ -8,7 +8,7 @@ project(
     'cpp_std=c++23',
   ])
 
-REACTOR_ARGS=['-DBOOST_URL_NO_SOURCE_LOCATION']
+#REACTOR_ARGS=['-DBOOST_URL_NO_SOURCE_LOCATION']
 
 openssl_dep = dependency('openssl', version: '>=1.1.1')
 boost_dep = dependency('boost',modules: ['coroutine','url'])
@@ -22,6 +22,7 @@ reactor_dep = declare_dependency(
 	include_directories : core_includes,
 	dependencies : [dependency('threads'),openssl_dep,boost_dep,json_dep]
 )
+subdir('examples')
 if get_option('enable-tests')
   subdir('tests')
 endif

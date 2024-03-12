@@ -12,7 +12,6 @@ webclient = executable('webclient',
     [webclient_sources, test_main], 
     include_directories : core_includes,
     dependencies : [webclient_deps,test_deps,openssl_dep], 
-    cpp_args : REACTOR_ARGS,
     link_with : [ test_dep_libs])
 
 test('flux test', webclient)

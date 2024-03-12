@@ -12,7 +12,6 @@ http_subscriber_test = executable('http_subscriber_test',
     [http_subscriber_test_sources, test_main], 
     include_directories : core_includes,
     dependencies : [http_subscriber_test_deps,test_deps,openssl_dep], 
-    cpp_args : REACTOR_ARGS,
     link_with : [ test_dep_libs])
 
 test('http_subscriber test', http_subscriber_test)

@@ -11,7 +11,20 @@
 #include <ranges>
 namespace reactor
 {
-
+template <typename Type, typename Res>
+struct ResponseEntity
+{
+    const Res& res_;
+    Type data_;
+    const auto& getHeaders() const
+    {
+        return res_.base();
+    }
+    const Type& data() const
+    {
+        return data_;
+    }
+};
 template <typename Res, typename Session>
 struct HttpSource : FluxBase<Res>::SourceHandler
 {
@@ -92,23 +105,27 @@ struct HttpFluxBase : FluxBase<HttpExpected<http::response<Body>>>
     void asJson(Handler h)
     {
         Base::subscribe([h = std::move(h)](auto v, auto reqNext) mutable {
+            using Entity = ResponseEntity<nlohmann::json, http::response<Body>>;
             try
             {
                 if (!v.isError())
                 {
-                    h(HttpExpected<nlohmann::json>{
-                        nlohmann::json::parse(v.response().body()),
-                        beast::error_code{}});
+                    Entity res{v.response(),
+                               nlohmann::json::parse(v.response().body())};
+                    HttpExpected<Entity> entity{res, beast::error_code{}};
+                    h(entity);
                     reqNext(false);
                     return;
                 }
             }
             catch (const std::exception& e)
             {
-                CLIENT_LOG_ERROR("Error in parsing json: {}", e.what());
+                CLIENT_LOG_ERROR("Error in parsing json: {} \n Data: {}",
+                                 e.what(), v.response().body());
             }
-            h(HttpExpected<nlohmann::json>{nlohmann::json{},
-                                           beast::http::error::bad_value});
+            Entity res{v.response(), nlohmann::json{}};
+            HttpExpected<Entity> entity{res, beast::http::error::bad_value};
+            h(entity);
         });
     }
 };
@@ -247,7 +264,14 @@ struct WebClient
         }
         WebClientBuilder& withEndpoint(const std::string& url)
         {
-            boost::urls::url_view urlvw(url);
+            return withEndpoint(boost::urls::url_view(url));
+        }
+        WebClientBuilder& withEndpoint(const char* url)
+        {
+            return withEndpoint(std::string(url));
+        }
+        WebClientBuilder& withEndpoint(boost::urls::url_view urlvw)
+        {
             host = urlvw.host();
             port = urlvw.port();
             target = urlvw.path();
@@ -290,7 +314,21 @@ struct WebClient
         verb = reactor::Verb{http::verb::put};
         return *this;
     }
-
+    WebClient& del()
+    {
+        verb = reactor::Verb{http::verb::delete_};
+        return *this;
+    }
+    WebClient& withHeaders(Headers headers)
+    {
+        session->setOption(std::move(headers));
+        return *this;
+    }
+    WebClient& withHeader(Header header)
+    {
+        session->setOption(std::move(header));
+        return *this;
+    }
     WebClient& withBody(ReqBody::value_type body)
     {
         session->setOption(std::move(body));

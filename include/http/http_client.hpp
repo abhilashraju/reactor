@@ -578,7 +578,7 @@ class HttpSession :
     }
     void setOption(const Header& h)
     {
-        req_.set(header.key, header.value);
+        req_.set(h.key, h.value);
     }
     void setOption(Version v)
     {

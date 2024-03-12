@@ -12,7 +12,6 @@ http_client_test = executable('http_client_test',
     [http_client_test_sources, test_main], 
     include_directories : core_includes,
     dependencies : [http_client_test_deps,test_deps,openssl_dep], 
-    cpp_args : REACTOR_ARGS,
     link_with : [ test_dep_libs])
 
 test('http_client test', http_client_test)
