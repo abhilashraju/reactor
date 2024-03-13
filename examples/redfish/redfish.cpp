@@ -36,6 +36,10 @@ struct Requester
         ctx.set_verify_mode(ssl::verify_none);
         return ctx;
     }
+    void getToken()
+    {
+        getToken([]() {});
+    }
     template <typename Contiuation>
     void getToken(Contiuation cont)
     {
@@ -99,15 +103,28 @@ struct Requester
 template <typename... Contiuation>
 struct When_All
 {
-    Requester& requester;
     using tuple_type = std::tuple<Contiuation...>;
+
     tuple_type cont_;
+    std::array<nlohmann::json, std::tuple_size_v<tuple_type>> results;
     std::function<void()> on_finish_;
-    int counter = 0;
-    When_All(Requester& req, Contiuation... cont) :
-        requester(req), cont_(std::make_tuple(cont...)),
-        counter(sizeof(tuple_type))
-    {}
+    size_t counter = std::tuple_size_v<tuple_type>;
+    struct WhenAllRequester
+    {
+        When_All* all;
+        Requester* requester;
+        size_t index;
+        void get(const std::string& target, auto&& cont)
+        {
+            auto incrementer = [all = all,
+                                cont = std::move(cont)](const auto& v) {
+                cont(v);
+                all->finish();
+            };
+            requester->get(target, incrementer);
+        }
+    };
+    When_All(Contiuation... cont) : cont_(std::make_tuple(cont...)) {}
 
     void onFinish(std::function<void()> on_finish)
     {
@@ -120,14 +137,14 @@ struct When_All
             on_finish_();
         }
     }
-    void operator()()
+    void operator()(Requester& requester)
     {
         std::apply(
-            [this](auto&&... cont) {
+            [this, &requester](auto&&... cont) {
             (
                 [&]() {
-                counter--;
-                cont();
+                WhenAllRequester req{.all = this, .requester = &requester};
+                cont(req);
             }(),
                 ...);
         },
@@ -144,19 +161,24 @@ int main(int argc, const char* argv[])
     }
     net::io_context ioc;
     Requester requester(ioc);
-    requester.withCredentials(user, password).withMachine("rain104bmc");
-    // requester.get("redfish/v1/Cables",
-    //               [](auto& v) { REACTOR_LOG_DEBUG("{}", v.dump(4)); });
-    auto chassis = [&requester]() {
-        requester.get("redfish/v1/Chassis/System",
-                      [](auto& v) { REACTOR_LOG_DEBUG("{}", v.dump(4)); });
-    };
-    auto cables = [&requester]() {
-        requester.get("redfish/v1/Cables",
-                      [](auto& v) { REACTOR_LOG_DEBUG("{}", v.dump(4)); });
-    };
-    When_All all(requester, chassis, cables);
-    all();
 
+    requester.withCredentials(user, password)
+        .withMachine("rain104bmc")
+        .getToken();
+    auto chassis = [](auto& requester) {
+        requester.get("redfish/v1/Chassis/System", [](auto& v) {
+            REACTOR_LOG_DEBUG("{}", v.dump(4));
+            return v;
+        });
+    };
+    auto cables = [](auto& requester) {
+        requester.get("redfish/v1/Cables", [](auto& v) {
+            REACTOR_LOG_DEBUG("{}", v.dump(4));
+            return v;
+        });
+    };
+    When_All all(chassis, cables);
+    all.onFinish([]() { REACTOR_LOG_DEBUG("Done"); });
+    all(requester);
     ioc.run();
 }
