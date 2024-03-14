@@ -154,6 +154,41 @@ struct When_All
             cont_);
     }
 };
+struct Aggregator
+{
+    struct RequestBlock
+    {
+        size_t count{0};
+        std::vector<nlohmann::json> results;
+        std::function<void(std::vector<nlohmann::json>)> onFinish;
+        void finish()
+        {
+            onFinish(std::move(results));
+        }
+    };
+    std::vector<std::reference_wrapper<Requester>> reqsters;
+    std::unordered_map<std::string, RequestBlock> blocks;
+    Aggregator(std::vector<std::reference_wrapper<Requester>> reqsters) :
+        reqsters(std::move(reqsters))
+    {}
+    auto get(const std::string& target, auto&& cont)
+    {
+        blocks.emplace(target, RequestBlock{.count = reqsters.size(),
+                                            .onFinish = std::move(cont)});
+        for (auto& r : reqsters)
+        {
+            r.get().get(target, [this, target](auto& v) {
+                blocks[target].results.push_back(v);
+                if (--blocks[target].count == 0)
+                {
+                    blocks[target].finish();
+                    blocks.erase(target);
+                }
+            });
+        }
+    }
+};
+
 int main(int argc, const char* argv[])
 {
     auto [user, password] = getArgs(parseCommandline(argc, argv), "-u", "-p");
@@ -162,12 +197,14 @@ int main(int argc, const char* argv[])
         std::cout << "redfish -u <username> -p <password>\n";
         return 1;
     }
+
     net::io_context ioc;
     Requester requester(ioc);
 
     requester.withCredentials(user, password)
         .withMachine("rain104bmc")
         .getToken();
+
     auto chassis = [](auto& requester) {
         requester.get("redfish/v1/Chassis/System", [](auto& v) { return v; });
     };
@@ -184,5 +221,18 @@ int main(int argc, const char* argv[])
     });
 
     all(requester);
+    Requester requester2(ioc);
+    requester2.withCredentials(user, password)
+        .withMachine("rain127bmc")
+        .getToken();
+    Aggregator collector({std::ref(requester), std::ref(requester2)});
+    collector.get("redfish/v1/Chassis/System", [](auto results) {
+        REACTOR_LOG_DEBUG("Done");
+        for (auto& v : results)
+        {
+            REACTOR_LOG_DEBUG("{}", v.dump(4));
+        }
+    });
+
     ioc.run();
 }
