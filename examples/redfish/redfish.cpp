@@ -104,11 +104,14 @@ template <typename... Contiuation>
 struct When_All
 {
     using tuple_type = std::tuple<Contiuation...>;
-
+    static constexpr size_t size = std::tuple_size_v<tuple_type>;
     tuple_type cont_;
-    std::array<nlohmann::json, std::tuple_size_v<tuple_type>> results;
-    std::function<void()> on_finish_;
-    size_t counter = std::tuple_size_v<tuple_type>;
+    using ResultType =
+        std::array<nlohmann::json, std::tuple_size_v<tuple_type>>;
+    using FinishHandler = std::function<void(ResultType&)>;
+    ResultType results;
+    FinishHandler on_finish_;
+    size_t counter = size;
     struct WhenAllRequester
     {
         When_All* all;
@@ -118,7 +121,7 @@ struct When_All
         {
             auto incrementer = [all = all,
                                 cont = std::move(cont)](const auto& v) {
-                cont(v);
+                all->results[all->size - all->counter] = cont(v);
                 all->finish();
             };
             requester->get(target, incrementer);
@@ -126,7 +129,7 @@ struct When_All
     };
     When_All(Contiuation... cont) : cont_(std::make_tuple(cont...)) {}
 
-    void onFinish(std::function<void()> on_finish)
+    void onFinish(FinishHandler on_finish)
     {
         on_finish_ = std::move(on_finish);
     }
@@ -134,7 +137,7 @@ struct When_All
     {
         if (--counter == 0)
         {
-            on_finish_();
+            on_finish_(results);
         }
     }
     void operator()(Requester& requester)
@@ -166,19 +169,20 @@ int main(int argc, const char* argv[])
         .withMachine("rain104bmc")
         .getToken();
     auto chassis = [](auto& requester) {
-        requester.get("redfish/v1/Chassis/System", [](auto& v) {
-            REACTOR_LOG_DEBUG("{}", v.dump(4));
-            return v;
-        });
+        requester.get("redfish/v1/Chassis/System", [](auto& v) { return v; });
     };
     auto cables = [](auto& requester) {
-        requester.get("redfish/v1/Cables", [](auto& v) {
-            REACTOR_LOG_DEBUG("{}", v.dump(4));
-            return v;
-        });
+        requester.get("redfish/v1/Cables", [](auto& v) { return v; });
     };
     When_All all(chassis, cables);
-    all.onFinish([]() { REACTOR_LOG_DEBUG("Done"); });
+    all.onFinish([](auto& results) {
+        REACTOR_LOG_DEBUG("Done");
+        for (auto& v : results)
+        {
+            REACTOR_LOG_DEBUG("{}", v.dump(4));
+        }
+    });
+
     all(requester);
     ioc.run();
 }
