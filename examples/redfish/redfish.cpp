@@ -87,6 +87,7 @@ struct Requester
                 if (v.isError())
                 {
                     REACTOR_LOG_ERROR("Error: {}", v.error().message());
+                    cont(nlohmann::json());
                     return;
                 }
                 cont(v.response().data());
@@ -166,16 +167,16 @@ struct Aggregator
             onFinish(std::move(results));
         }
     };
-    std::vector<std::reference_wrapper<Requester>> reqsters;
+    std::vector<std::reference_wrapper<Requester>> requesters;
     std::unordered_map<std::string, RequestBlock> blocks;
-    Aggregator(std::vector<std::reference_wrapper<Requester>> reqsters) :
-        reqsters(std::move(reqsters))
+    Aggregator(std::vector<std::reference_wrapper<Requester>> requesters) :
+        requesters(std::move(requesters))
     {}
     auto get(const std::string& target, auto&& cont)
     {
         blocks.emplace(target, RequestBlock{.count = reqsters.size(),
                                             .onFinish = std::move(cont)});
-        for (auto& r : reqsters)
+        for (auto& r : requesters)
         {
             r.get().get(target, [this, target](auto& v) {
                 blocks[target].results.push_back(v);
