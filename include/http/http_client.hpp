@@ -82,12 +82,20 @@ struct SyncStream : public std::enable_shared_from_this<SyncStream<Stream>>
     {
         beast::error_code ec{};
         // Send the HTTP request to the remote host
-        auto bytes_transferred = http::write(mStream, req, ec);
-        if (ec)
+        try
         {
-            return fail(ec, "write");
+            auto bytes_transferred = http::write(mStream, req, ec);
+            if (ec)
+            {
+                return fail(ec, "write");
+            }
+            onWriteHandler(ec, bytes_transferred);
         }
-        onWriteHandler(ec, bytes_transferred);
+        catch (const std::exception& e)
+        {
+            CLIENT_LOG_ERROR("Exception: {}", e.what());
+            throw e;
+        }
     }
     void read(auto& buffer, auto& res,
               std::function<void(beast::error_code, std::size_t)> onReadHandler)
@@ -526,6 +534,7 @@ class HttpSession :
             }
             if (stream && !stream->closed())
             {
+                responseHandler = ResponseHandler{};
                 stream->shutDown();
             }
         });
@@ -576,6 +585,7 @@ class HttpSession :
             req_.set(header.key, header.value);
         }
     }
+
     void setOption(const Header& h)
     {
         req_.set(h.key, h.value);
@@ -606,6 +616,10 @@ class HttpSession :
     void setOptions(Options... opts)
     {
         (setOption(opts), ..., 1);
+    }
+    void setOption(Request req)
+    {
+        req_ = std::move(req);
     }
     void close()
     {
@@ -684,6 +698,7 @@ class HttpSession :
         if (!keepAlive)
         {
             connectionState = std::monostate();
+            responseHandler = ResponseHandler{};
             stream->shutDown();
             return;
         }

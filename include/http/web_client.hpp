@@ -241,6 +241,8 @@ template <typename Stream, typename ReqBody = http::empty_body,
 struct WebClient
 {
     using Session = HttpSession<Stream, ReqBody, ResBody>;
+    using Request = typename Session::Request;
+    using Response = typename Session::Response;
 
   private:
     reactor::Host host;
@@ -277,6 +279,21 @@ struct WebClient
             target = urlvw.path();
             return *this;
         }
+        WebClientBuilder& withHost(std::string h)
+        {
+            host = std::move(h);
+            return *this;
+        }
+        WebClientBuilder& withPort(std::string p)
+        {
+            port = std::move(p);
+            return *this;
+        }
+        WebClientBuilder& withTarget(std::string t)
+        {
+            target = std::move(t);
+            return *this;
+        }
 
         WebClient create()
         {
@@ -285,13 +302,17 @@ struct WebClient
             client.port = reactor::Port{port};
             client.target = reactor::Target{target};
             client.session = session->clone();
-
             return client;
         }
     };
     static WebClientBuilder builder()
     {
         return WebClientBuilder();
+    }
+    WebClient& withMethod(http::verb v)
+    {
+        verb = reactor::Verb(v);
+        return *this;
     }
     WebClient& get()
     {
@@ -324,6 +345,11 @@ struct WebClient
         session->setOption(std::move(headers));
         return *this;
     }
+    WebClient& withHeaders(const Request::header_type& headers)
+    {
+        session->setOption(headers);
+        return *this;
+    }
     WebClient& withHeader(Header header)
     {
         session->setOption(std::move(header));
@@ -342,6 +368,13 @@ struct WebClient
     WebClient& withContentType(ContentType type)
     {
         session->setOption(std::move(type));
+        return *this;
+    }
+    WebClient& withRequest(Session::Request req)
+    {
+        target = Target{req.target()};
+        verb = Verb{req.method()};
+        session->setOption(std::move(req));
         return *this;
     }
 

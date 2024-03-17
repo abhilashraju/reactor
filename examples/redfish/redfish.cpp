@@ -46,7 +46,7 @@ struct Requester
         if (token.empty())
         {
             auto mono =
-                WebClient<AsyncSslStream, http::string_body>::builder()
+                WebClient<SslStream, http::string_body>::builder()
                     .withSession(ioc.get_executor(), getContext())
                     .withEndpoint(std::format(
                         "https://{}.aus.stglabs.ibm.com:443/redfish/v1/SessionService/Sessions",
@@ -87,7 +87,8 @@ struct Requester
                 if (v.isError())
                 {
                     REACTOR_LOG_ERROR("Error: {}", v.error().message());
-                    cont(nlohmann::json());
+                    auto j = nlohmann::json();
+                    cont(j);
                     return;
                 }
                 cont(v.response().data());
@@ -174,7 +175,7 @@ struct Aggregator
     {}
     auto get(const std::string& target, auto&& cont)
     {
-        blocks.emplace(target, RequestBlock{.count = reqsters.size(),
+        blocks.emplace(target, RequestBlock{.count = requesters.size(),
                                             .onFinish = std::move(cont)});
         for (auto& r : requesters)
         {
@@ -210,7 +211,7 @@ int main(int argc, const char* argv[])
         requester.get("redfish/v1/Chassis/System", [](auto& v) { return v; });
     };
     auto cables = [](auto& requester) {
-        requester.get("redfish/v1/Cables", [](auto& v) { return v; });
+        requester.get("redfish/v1", [](auto& v) { return v; });
     };
     When_All all(chassis, cables);
     all.onFinish([](auto& results) {
