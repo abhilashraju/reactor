@@ -179,9 +179,7 @@ struct FluxBase : SubscriberType<T, FluxBase<T>>
         Base::subscriber = std::move(handler);
         if (mSource->hasNext())
         {
-            mSource->next([handler = std::move(handler), this](const T& v) {
-                Base::visit(v);
-            });
+            mSource->next([this](const T& v) { Base::visit(v); });
             return;
         }
         if (onFinishHandler)
@@ -361,7 +359,7 @@ struct AsyncSinkGroup
             [&res, this](auto& sink) {
             sink(res,
                  std::bind_front(&AsyncSinkGroup::handleSinkCallback, this));
-            },
+        },
             vsink);
     }
     void operator()(const SourceType& res, auto&& reqNext)
