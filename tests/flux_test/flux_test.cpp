@@ -154,10 +154,9 @@ TEST(flux, flux_connection)
 {
     net::io_context ioc;
     auto ex = net::make_strand(ioc);
-
-    auto m2 = HttpFlux<http::string_body>::connect(
-        AsyncTcpSession<http::empty_body>::create(ex),
-        "http://127.0.0.1:8081/testget");
+    using Session = AsyncTcpSession<http::empty_body>;
+    auto m2 = HttpFlux<Session>::connect(Session::create(ex),
+                                         "http://127.0.0.1:8081/testget");
 
     m2.subscribe([](auto v, auto&& reqNext) {
         EXPECT_EQ(v.response().body(), "hello");
@@ -169,10 +168,9 @@ TEST(flux, flux_connection_sink)
 {
     net::io_context ioc;
     auto ex = net::make_strand(ioc);
-
-    auto m2 = HttpFlux<http::string_body>::connect(
-        AsyncTcpSession<http::empty_body>::create(ex),
-        "http://127.0.0.1:8081/testget");
+    using Session = AsyncTcpSession<http::empty_body>;
+    auto m2 = HttpFlux<Session>::connect(Session::create(ex),
+                                         "http://127.0.0.1:8081/testget");
 
     auto sink = createHttpSink<decltype(m2)::SourceType>(
         AsyncTcpSession<http::string_body>::create(ex));
@@ -192,9 +190,9 @@ TEST(flux, flux_connection_broadcast_sink)
 
     ssl::context ctx{ssl::context::tlsv12_client};
     ctx.set_verify_mode(ssl::verify_none);
-    auto m2 = HttpFlux<http::string_body>::connect(
-        AsyncTcpSession<http::empty_body>::create(ex),
-        "http://127.0.0.1:8081/testget");
+    using Session = AsyncTcpSession<http::empty_body>;
+    auto m2 = HttpFlux<Session>::connect(Session::create(ex),
+                                         "http://127.0.0.1:8081/testget");
 
     auto sink1 = createHttpSink<decltype(m2)::SourceType>(
         AsyncTcpSession<http::string_body>::create(ex));

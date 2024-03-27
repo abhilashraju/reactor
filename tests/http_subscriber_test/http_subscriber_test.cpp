@@ -13,9 +13,7 @@ TEST(HttpSubscriberTest, SendEvent)
     ssl::context ctx{ssl::context::tlsv12_client};
     ctx.set_verify_mode(ssl::verify_none);
     reactor::HttpSubscriber subscriber(executor, destUrl);
-    subscriber
-        .withPolicy(
-            HttpSubscriber::RetryPolicy{.maxRetries = 3, .retryDelay = 15})
+    subscriber.withPolicy(RetryPolicy{.maxRetries = 3, .retryDelay = 15})
         .withSslContext(std::move(ctx))
         .withPoolSize(1)
         .withSuccessHandler([](const auto& req, const auto& res) {

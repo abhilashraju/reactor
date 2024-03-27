@@ -98,6 +98,29 @@ TEST(webclient, simple_flux)
     std::vector<std::string> expected{"test", "hello"};
     EXPECT_EQ(std::equal(begin(actual), end(actual), begin(expected)), true);
 }
+TEST(webclient, simple_flux_with_retry)
+{
+    net::io_context ioc;
+    auto ex = net::make_strand(ioc);
+    int trycount = 0;
+    ssl::context ctx{ssl::context::tlsv12_client};
+    ctx.set_verify_mode(ssl::verify_none);
+    auto flux = WebClient<AsyncTcpStream>::builder()
+                    .withSession(ex)
+                    .withEndpoint("http://127.0.0.1:8081/testget")
+                    .create()
+                    .get()
+                    .withRetry(3)
+                    .toFlux();
+    flux->asJson([&trycount, i = 0](auto v) mutable {
+        trycount++;
+        if (v.isError())
+            throw std::runtime_error("error");
+    });
+    ioc.run();
+
+    EXPECT_EQ(trycount, 3);
+}
 TEST(webclient, simple_mono_post)
 {
     net::io_context ioc;

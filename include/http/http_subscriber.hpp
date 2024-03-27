@@ -1,5 +1,6 @@
 #pragma once
 #include "http_client_pool.hpp"
+#include "retry_request.hpp"
 
 #include <boost/circular_buffer.hpp>
 #include <boost/url/url.hpp>
@@ -12,69 +13,12 @@ namespace reactor
 class HttpSubscriber
 {
   public:
-    struct RetryPolicy
-    {
-        int maxRetries{3};
-        unsigned retryCount{0};
-        unsigned retryDelay{15};
-        bool retryNeeded() const
-        {
-            return maxRetries < 0 || retryCount < maxRetries;
-        }
-        void incrementRetryCount()
-        {
-            retryCount++;
-        }
-        void decrementRetryCount()
-        {
-            retryCount--;
-        }
-        auto getRetryDelay() const
-        {
-            return std::chrono::seconds(retryDelay);
-        }
-    };
     using Session = AsyncSslSession<http::string_body>;
     using Request = Session::Request;
     using Response = Session::Response;
+    using RetryRequest = RetryRequest<Request>;
 
   private:
-    struct RetryRequest : std::enable_shared_from_this<RetryRequest>
-    {
-        Request req;
-        RetryPolicy policy;
-        boost::asio::steady_timer timer;
-        std::function<void()> retryFunction;
-        RetryRequest(Request&& r, const RetryPolicy& p,
-                     net::any_io_executor ex) :
-            req(std::move(r)),
-            policy(p), timer(ex)
-        {}
-        ~RetryRequest()
-        {
-            CLIENT_LOG_INFO("RetryRequest destroyed");
-        }
-        void setRequest(Request&& r)
-        {
-            req = std::move(r);
-        }
-        void waitAndRetry()
-        {
-            if (policy.retryNeeded())
-            {
-                policy.incrementRetryCount();
-                timer.expires_after(policy.getRetryDelay());
-                timer.async_wait([self = shared_from_this()](
-                                     const boost::system::error_code& ec) {
-                    if (!ec)
-                    {
-                        self->retryFunction();
-                    }
-                });
-            }
-        }
-    };
-
   public:
     HttpSubscriber(net::any_io_executor ioc, std::string destUrl) :
         ioContext(ioc), destUrl(destUrl), httpClientPool(ioContext, 5)

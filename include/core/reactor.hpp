@@ -172,6 +172,10 @@ struct FluxBase : SubscriberType<T, FluxBase<T>>
     std::unique_ptr<SourceHandler> mSource{};
     std::function<void()> onFinishHandler{};
     std::vector<std::unique_ptr<SubscriberBase>> mapHandlers;
+    SourceHandler* source() const
+    {
+        return mSource.get();
+    }
 
   public:
     void subscribe(auto handler)

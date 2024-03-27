@@ -523,6 +523,10 @@ class HttpSession :
     {
         CLIENT_LOG_DEBUG("HttpSession destroyed");
     }
+    auto get_executor()
+    {
+        return resolver_.get_executor();
+    }
     void setErrorHandler()
     {
         stream->setErrorHandler([this](beast::error_code ec, const char* what) {
@@ -727,6 +731,10 @@ class HttpSession :
     [[nodiscard]] http::request<ReqBody>&& takeRequest()
     {
         return std::move(req_);
+    }
+    [[nodiscard]] http::request<ReqBody> copyRequest()
+    {
+        return req_;
     }
 };
 template <typename Response>

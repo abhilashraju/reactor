@@ -1,6 +1,7 @@
 #pragma once
 #include "core/reactor.hpp"
 #include "http/http_client.hpp"
+#include "http/retry_request.hpp"
 
 #include <boost/url/url.hpp>
 #include <boost/url/url_view.hpp>
@@ -36,6 +37,14 @@ struct HttpSource : FluxBase<Res>::SourceHandler
         session(std::move(aSession)),
         count(shots), forever(infinite)
     {}
+    auto getSession() const
+    {
+        return session;
+    }
+    void setSession(std::shared_ptr<Session> aSession)
+    {
+        session = std::move(aSession);
+    }
     void setUrl(std::string u)
     {
         boost::urls::url_view urlvw(u);
@@ -77,62 +86,126 @@ struct HttpSource : FluxBase<Res>::SourceHandler
 template <typename Session>
 HttpSource(std::shared_ptr<Session>) -> HttpSource<std::string, Session>;
 
-template <typename Body, bool flux>
-struct HttpFluxBase : FluxBase<HttpExpected<http::response<Body>>>
+template <typename Session, bool flux>
+struct HttpFluxBase :
+    FluxBase<HttpExpected<http::response<typename Session::ResponseBody>>>
 {
+    using Body = typename Session::ResponseBody;
     using SourceType = HttpExpected<http::response<Body>>;
+
+    using HttpSource = HttpSource<SourceType, Session>;
     using Base = FluxBase<HttpExpected<http::response<Body>>>;
+    using RetryRequest = RetryRequest<typename Session::Request>;
+    RetryPolicy retryPolicy;
     explicit HttpFluxBase(Base::SourceHandler* srcHandler) : Base(srcHandler) {}
-    template <typename Session>
+
     static HttpFluxBase connect(std::shared_ptr<Session> session,
                                 const std::string& url,
                                 http::verb v = http::verb::get)
     {
-        auto src = new HttpSource<SourceType, Session>(session, 1, flux);
+        auto src = new HttpSource(session, 1, flux);
         src->setUrl(url);
         src->setVerb(v);
         auto m = HttpFluxBase{src};
         return m;
     }
-    template <typename Session>
+
     static auto makeShared(std::shared_ptr<Session> session)
     {
-        auto src = new HttpSource<SourceType, Session>(session, 1, flux);
+        auto src = new HttpSource(session, 1, flux);
         auto m = std::make_shared<HttpFluxBase>(src);
         return m;
     }
-    template <typename Handler>
-    void asJson(Handler h)
+    void retry(int count)
     {
-        Base::subscribe([h = std::move(h)](auto v, auto reqNext) mutable {
-            using Entity = ResponseEntity<nlohmann::json, http::response<Body>>;
+        retryPolicy = {.maxRetries = count, .retryCount = 0, .retryDelay = 15};
+    }
+    bool retryIfNeeded(auto&& req, auto&& reqNext, auto src)
+    {
+        if (retryPolicy.retryNeeded())
+        {
+            retryPolicy.incrementRetryCount();
+            auto retryRequest = std::make_shared<RetryRequest>(
+                std::move(req), retryPolicy, src->getSession()->get_executor());
+            retryRequest->retryFunction =
+                [retrySelf = std::weak_ptr<RetryRequest>(retryRequest),
+                 reqNext = std::move(reqNext), src]() {
+                if (auto retryRequest = retrySelf.lock())
+                {
+                    auto session = src->getSession()->clone();
+                    session->setOption(retryRequest->req.base());
+                    session->setOption(
+                        Host{retryRequest->req.base()[http::field::host]});
+                    session->setOption(Port{retryRequest->req.base()["port"]});
+                    src->setSession(session);
+                    reqNext(true);
+                }
+            };
+
+            retryRequest->waitAndRetry();
+            return true;
+        }
+        return false;
+    }
+    void subscribeWithRetry(auto handler)
+    {
+        Base::subscribe(
+            [handler = std::move(handler),
+             self = Base::shared_from_this()](auto v, auto reqNext) mutable {
             try
             {
                 if (!v.isError())
                 {
-                    Entity res{v.response(),
-                               nlohmann::json::parse(v.response().body())};
-                    HttpExpected<Entity> entity{res, beast::error_code{}};
-                    h(entity);
+                    handler(v);
                     reqNext(false);
                     return;
                 }
             }
             catch (const std::exception& e)
             {
-                CLIENT_LOG_ERROR("Error in parsing json: {} \n Data: {}",
-                                 e.what(), v.response().body());
+                CLIENT_LOG_ERROR("Caught Application Error: {}", e.what());
+                CLIENT_LOG_INFO("Attempting retry: {}", e.what());
             }
+            HttpFluxBase* b = static_cast<HttpFluxBase*>(self.get());
+            HttpSource* src = static_cast<HttpSource*>(b->source());
+            if (b->retryIfNeeded(src->getSession()->takeRequest(),
+                                 std::move(reqNext), src))
+            {
+                return;
+            }
+            reqNext(false);
+        });
+    }
+    // void subscribe(auto handler)
+    // {
+    //     subscribeWithRetry(std::move(handler));
+    // }
+    // using Base::subscribe;
+    template <typename Handler>
+    void asJson(Handler h)
+    {
+        subscribeWithRetry([h = std::move(h)](auto& v) mutable {
+            using Entity = ResponseEntity<nlohmann::json, http::response<Body>>;
+            nlohmann::json resJson = nlohmann::json::parse(v.response().body(),
+                                                           nullptr, false);
+            if (!resJson.is_discarded())
+            {
+                Entity res{v.response(), std::move(resJson)};
+                HttpExpected<Entity> entity{res, beast::error_code{}};
+                h(entity);
+                return;
+            }
+
             Entity res{v.response(), nlohmann::json{}};
             HttpExpected<Entity> entity{res, beast::http::error::bad_value};
             h(entity);
         });
     }
 };
-template <typename Body>
-using HttpFlux = HttpFluxBase<Body, true>;
-template <typename Body>
-using HttpMono = HttpFluxBase<Body, false>;
+template <typename Session>
+using HttpFlux = HttpFluxBase<Session, true>;
+template <typename Session>
+using HttpMono = HttpFluxBase<Session, false>;
 
 template <typename SourceType,
           typename Session = HttpSession<AsyncSslStream, http::string_body>>
@@ -248,6 +321,7 @@ struct WebClient
     reactor::Host host;
     reactor::Port port;
     reactor::Target target;
+    int retryCount{0};
     std::shared_ptr<Session> session;
     reactor::Verb verb;
 
@@ -377,24 +451,30 @@ struct WebClient
         session->setOption(std::move(req));
         return *this;
     }
+    WebClient& withRetry(int c)
+    {
+        retryCount = c;
+        return *this;
+    }
 
-    std::shared_ptr<HttpFlux<ResBody>> toFlux()
+    std::shared_ptr<HttpFlux<Session>> toFlux()
     {
         session->setOption(port);
         session->setOption(host);
         session->setOption(target);
         session->setOption(verb);
-        auto m2 = HttpFlux<ResBody>::makeShared(std::move(session));
+        auto m2 = HttpFlux<Session>::makeShared(std::move(session));
+        m2->retry(retryCount);
         return m2;
     }
 
-    std::shared_ptr<HttpMono<ResBody>> toMono()
+    std::shared_ptr<HttpMono<Session>> toMono()
     {
         session->setOption(port);
         session->setOption(host);
         session->setOption(target);
         session->setOption(verb);
-        auto m2 = HttpMono<ResBody>::makeShared(std::move(session));
+        auto m2 = HttpMono<Session>::makeShared(std::move(session));
         return m2;
     }
 };
