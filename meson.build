@@ -8,8 +8,8 @@ project(
     'cpp_std=c++23',
   ])
 
-#REACTOR_ARGS=['-DBOOST_URL_NO_SOURCE_LOCATION']
 
+add_project_arguments('-DSSL_ON', language : 'cpp')
 openssl_dep = dependency('openssl', version: '>=1.1.1')
 boost_dep = dependency('boost',modules: ['coroutine','url'])
 json_dep = dependency('nlohmann_json')

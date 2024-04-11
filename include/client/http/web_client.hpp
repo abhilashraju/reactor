@@ -1,7 +1,7 @@
 #pragma once
+#include "client/http/http_client.hpp"
+#include "client/http/retry_request.hpp"
 #include "core/reactor.hpp"
-#include "http/http_client.hpp"
-#include "http/retry_request.hpp"
 
 #include <boost/url/url.hpp>
 #include <boost/url/url_view.hpp>
