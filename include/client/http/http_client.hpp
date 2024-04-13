@@ -1,6 +1,7 @@
 
 #pragma once
 #include "async_streams.hpp"
+#include "coro_streams.hpp"
 #include "http_expected.hpp"
 #include "logger/logger.hpp"
 #include "sync_streams.hpp"
@@ -359,5 +360,8 @@ using SslSession = HttpSession<SslStream, ReqBody, ResBody>;
 template <typename ReqBody = http::empty_body,
           typename ResBody = http::string_body>
 using AsyncSslSession = HttpSession<AsyncSslStream, ReqBody, ResBody>;
+template <typename ReqBody = http::empty_body,
+          typename ResBody = http::string_body>
+using CoroSslSession = HttpSession<CoroSslStream, ReqBody, ResBody>;
 #endif
 } // namespace reactor
