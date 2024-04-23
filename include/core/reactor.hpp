@@ -1,5 +1,5 @@
 #pragma once
-#include "core/reactor_concepts.hpp"
+#include "common/reactor_concepts.hpp"
 
 #include <functional>
 #include <memory>

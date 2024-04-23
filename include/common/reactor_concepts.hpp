@@ -1,5 +1,7 @@
 #pragma once
 
+#include "common_defs.hpp"
+
 #include <concepts>
 #include <functional>
 namespace reactor
@@ -32,4 +34,5 @@ concept AsyncSubScribeFunction =
             h(arg, std::move(token))
         } -> std::same_as<void>;
     };
+
 } // namespace reactor
