@@ -16,7 +16,8 @@ struct HttpRouter
     struct handler_base
     {
         virtual VariantResponse handle(VariantRequest& req,
-                                       const http_function& vw) = 0;
+                                       const http_function& vw,
+                                       net::yield_context) = 0;
         virtual ~handler_base() {}
     };
     using HANDLER_MAP = flat_map<request_mapper, std::unique_ptr<handler_base>>;
@@ -26,10 +27,10 @@ struct HttpRouter
         HandlerFunc func;
         handler(HandlerFunc fun) : func(std::move(fun)) {}
 
-        VariantResponse handle(VariantRequest& req,
-                               const http_function& params) override
+        VariantResponse handle(VariantRequest& req, const http_function& params,
+                               net::yield_context yield) override
         {
-            return func(req, params);
+            return func(req, params, yield);
         }
     };
     void setIoContext(std::reference_wrapper<net::io_context> ctx)
@@ -112,7 +113,7 @@ struct HttpRouter
         return get_handlers;
     }
 
-    auto process_request(auto& reqVariant)
+    auto process_request(auto& reqVariant, net::yield_context yield)
     {
         auto httpfunc = parse_function(target(reqVariant));
         auto& handlers = handler_for_verb(method(reqVariant));
@@ -121,7 +122,7 @@ struct HttpRouter
         {
             extract_params_from_path(httpfunc, iter->first.path,
                                      httpfunc.name());
-            return iter->second->handle(reqVariant, httpfunc);
+            return iter->second->handle(reqVariant, httpfunc, yield);
         }
 
         throw file_not_found(httpfunc.name());
@@ -133,7 +134,7 @@ struct HttpRouter
                     cont = std::move(cont)](net::yield_context yield) mutable {
             try
             {
-                auto response = process_request(req);
+                auto response = process_request(req, yield);
                 cont(std::move(response));
             }
             catch (std::exception& e)

@@ -4,17 +4,19 @@
 namespace reactor
 {
 template <typename Handler>
-concept DynBodyRequestHandler =
-    requires(Handler h, const DynamicbodyRequest& r, const http_function& f) {
-        {
-            h(r, f)
-        } -> std::same_as<VariantResponse>;
-    };
+concept DynBodyRequestHandler = requires(Handler h, const DynamicbodyRequest& r,
+                                         const http_function& f,
+                                         net::yield_context yield) {
+                                    {
+                                        h(r, f, yield)
+                                    } -> std::same_as<VariantResponse>;
+                                };
 template <typename Handler>
 concept StringBodyRequestHandler =
-    requires(Handler h, const StringbodyRequest& r, const http_function& f) {
+    requires(Handler h, const StringbodyRequest& r, const http_function& f,
+             net::yield_context yield) {
         {
-            h(r, f)
+            h(r, f, yield)
         } -> std::same_as<VariantResponse>;
     };
 } // namespace reactor
