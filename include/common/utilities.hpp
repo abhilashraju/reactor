@@ -4,11 +4,16 @@
 #include <vector>
 namespace reactor
 {
+inline std::string toString(std::string_view vw)
+{
+    return std::string(vw.data(), vw.length());
+}
 inline auto stringSplitter(char c, int skip = 0)
 {
     return std::views::split(c) | std::views::drop(skip) |
-           std::views::transform(
-               [](auto&& sub) { return std::string(sub.begin(), sub.end()); });
+           std::views::transform([](auto&& sub) {
+        return std::string_view(sub.begin(), sub.end());
+    });
 }
 inline auto split(const std::string_view& input, char c, int skip = 0)
 {
@@ -20,8 +25,9 @@ inline auto join(const auto& input, char c)
     std::string result;
     for (auto v : input)
     {
-        result += c + v;
+        result += c + toString(v);
     }
     return result;
 }
+
 } // namespace reactor

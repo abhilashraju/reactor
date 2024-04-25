@@ -11,9 +11,9 @@ struct http_function
 {
     struct parameter
     {
-        std::string name;
-        std::string value;
-        parameter(std::string n, std::string v) :
+        std::string_view name;
+        std::string_view value;
+        parameter(std::string_view n, std::string_view v) :
             name(std::move(n)), value(std::move(v))
         {}
     };
@@ -38,7 +38,7 @@ struct http_function
                                      [&](auto& p) { return p.name == name; });
             iter != end(_params))
         {
-            return iter->value;
+            return {iter->value.data(), iter->value.size()};
         }
         return std::string();
     }
