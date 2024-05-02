@@ -47,8 +47,8 @@ class UdpServer
         acceptAsyncConnection();
         auto sendcb = [this, sender_endpoint](auto&& res,
                                               net::yield_context y) {
-            UdpClient<1024>::send_to(ioc_, y, sender_endpoint,
-                                     net::const_buffer(res.data(), res.size()));
+            socket_.async_send_to(net::const_buffer(res.data(), res.size()),
+                                  sender_endpoint, y);
         };
         handler.handleRead(ec, std::string_view{buffer_.data(), bytes_received},
                            yield,
