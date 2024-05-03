@@ -89,26 +89,13 @@ struct UdpClient
                         std::string_view host, std::string_view port,
                         net::const_buffer message)
     {
-        auto cb = [](error_code ec, net::const_buffer data) {
-            if (ec)
-            {
-                REACTOR_LOG_ERROR("Error in udp : {}", ec.message());
-            }
-        };
-        send_to(ioc, yield, host, port, message, cb, false);
-    }
-    static void send_to(net::io_context& ioc, net::yield_context yield,
-                        const udp::endpoint& ep, net::const_buffer message)
-    {
         auto cb = [](error_code ec, std::string_view data) {
             if (ec)
             {
                 REACTOR_LOG_ERROR("Error in udp : {}", ec.message());
             }
         };
-        UdpClient client(ioc, std::move(cb));
-        client.setYieldContext(yield);
-        client.send(message, ep);
+        send_to(ioc, yield, host, port, message, std::move(cb), false);
     }
 };
 } // namespace reactor
