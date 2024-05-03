@@ -31,6 +31,10 @@ class UdpServer
     {
         return ioc_;
     }
+    udp::endpoint getLocalEndpoint()
+    {
+        return socket_.local_endpoint();
+    }
 
   private:
     void do_receive(net::yield_context yield)
