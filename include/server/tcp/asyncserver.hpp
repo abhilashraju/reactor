@@ -6,13 +6,14 @@ namespace reactor
 template <typename StreamMaker, typename Handler>
 struct AsyncServer
 {
-    net::io_context ioc_;
+    net::io_context& ioc_;
     Handler& handler;
     tcp::acceptor acceptor_;
     StreamMaker streamMaker;
 
-    AsyncServer(Handler& h, std::string_view port, StreamMaker&& streamMaker) :
-        handler(h),
+    AsyncServer(net::io_context& ioc, Handler& h, std::string_view port,
+                StreamMaker&& streamMaker) :
+        ioc_(ioc), handler(h),
         acceptor_(ioc_, tcp::endpoint(tcp::v4(), std::atoi(port.data()))),
         streamMaker(std::move(streamMaker))
     {
@@ -20,9 +21,13 @@ struct AsyncServer
     }
     void start()
     {
+        listen();
+        ioc_.run();
+    }
+    void listen()
+    {
         acceptor_.listen(net::socket_base::max_listen_connections);
         waitForAsyncConnection();
-        ioc_.run();
     }
     void waitForAsyncConnection()
     {
@@ -42,9 +47,9 @@ template <typename Handler, typename StreamMaker = SslStreamMaker>
 struct AsyncSslServer : AsyncServer<StreamMaker, Handler>
 {
     using Base = AsyncServer<StreamMaker, Handler>;
-    AsyncSslServer(Handler& handler, const std::string_view port,
-                   std::string_view cirtDir) :
-        Base(handler, port, StreamMaker(cirtDir))
+    AsyncSslServer(net::io_context& ioc, Handler& handler,
+                   const std::string_view port, std::string_view cirtDir) :
+        Base(ioc, handler, port, StreamMaker(cirtDir))
     {}
 };
 } // namespace reactor

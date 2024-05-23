@@ -83,6 +83,10 @@ struct SslStreamMakerImpl
         {
             return *stream_;
         }
+        const auto& endPoint() const
+        {
+            return stream_->next_layer().remote_endpoint();
+        }
     };
     ssl::context sslContext;
     SslStreamMakerImpl(std::string_view cirtDir) :

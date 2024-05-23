@@ -40,30 +40,41 @@ class HttpHandler
         auto forwarder = router.getForwarder(request.target());
         if (forwarder)
         {
-            auto responseHander = [streamReader](auto&& response) mutable {
+            bool keepAlive = request.keep_alive();
+            auto responseHander = [streamReader, &router,
+                                   keepAlive](auto&& response) mutable {
                 net::spawn(streamReader.stream().get_executor(),
-                           [streamReader, response = std::move(response)](
-                               net::yield_context yield) {
-                    sendResponse(streamReader, response, yield);
+                           [streamReader, keepAlive, &router,
+                            response = std::move(response)](
+                               net::yield_context yield) mutable {
+                    sendResponse(streamReader, response, keepAlive, router,
+                                 yield);
                 });
             };
-            (*forwarder)(std::move(request), std::move(responseHander));
+            (*forwarder)(std::move(request), streamReader.endPoint(),
+                         std::move(responseHander));
         }
     }
     static inline void sendResponse(auto streamReader, auto& response,
+                                    bool keepAlive, auto& router,
                                     net::yield_context yield)
     {
         beast::error_code ec{};
         auto resp = std::get_if<StringbodyResponse>(&response);
         assert(resp);
+        resp->keep_alive(keepAlive);
         http::async_write(streamReader.stream(), *resp, yield[ec]);
-
-        streamReader.stream().async_shutdown(yield[ec]);
-        if (ec)
+        if (ec || !keepAlive)
         {
-            std::cout << ec.message() << "\n";
+            streamReader.stream().async_shutdown(yield[ec]);
+            if (ec)
+            {
+                std::cout << ec.message() << "\n";
+            }
+            streamReader.stream().lowest_layer().close();
+            return;
         }
-        streamReader.stream().lowest_layer().close();
+        handleRead(std::move(streamReader), router, yield);
     }
 };
 } // namespace reactor

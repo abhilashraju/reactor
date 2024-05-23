@@ -34,8 +34,7 @@ struct HttpSource : FluxBase<Res>::SourceHandler
     bool forever{false};
     explicit HttpSource(std::shared_ptr<Session> aSession, int shots,
                         bool infinite = false) :
-        session(std::move(aSession)),
-        count(shots), forever(infinite)
+        session(std::move(aSession)), count(shots), forever(infinite)
     {}
     auto getSession() const
     {
@@ -363,9 +362,9 @@ struct WebClient
             port = std::move(p);
             return *this;
         }
-        WebClientBuilder& withTarget(std::string t)
+        WebClientBuilder& withTarget(std::string_view t)
         {
-            target = std::move(t);
+            target = std::string(t.data(), t.length());
             return *this;
         }
 
@@ -386,6 +385,24 @@ struct WebClient
     WebClient& withMethod(http::verb v)
     {
         verb = reactor::Verb(v);
+        return *this;
+    }
+    WebClient& withMethod(std::string_view v)
+    {
+        verb = reactor::Verb{http::verb::get};
+        using map = std::pair<const char*, http::verb>;
+        constexpr std::array<map, 5> verbs = {
+            {{"get", http::verb::get},
+             {"post", http::verb::post},
+             {"put", http::verb::put},
+             {"patch", http::verb::patch},
+             {"delete", http::verb::delete_}}};
+        auto it = std::ranges::find_if(
+            verbs, [v](const map& m) { return v == m.first; });
+        if (it != verbs.end())
+        {
+            verb = reactor::Verb{it->second};
+        }
         return *this;
     }
     WebClient& get()
@@ -434,7 +451,7 @@ struct WebClient
         session->setOption(std::move(body));
         return *this;
     }
-    WebClient& withBody(nlohmann::json&& body)
+    WebClient& withJson(const nlohmann::json& body)
     {
         session->setOption(typename ReqBody::value_type(body.dump()));
         return *this;

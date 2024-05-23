@@ -113,9 +113,11 @@ struct HttpRouter
         return get_handlers;
     }
 
-    auto process_request(auto& reqVariant, net::yield_context yield)
+    auto process_request(auto& reqVariant, tcp::endpoint&& ep,
+                         net::yield_context yield)
     {
         auto httpfunc = parse_function(target(reqVariant));
+        httpfunc.setEndpoint(std::move(ep));
         auto& handlers = handler_for_verb(method(reqVariant));
         if (auto iter = handlers.find({httpfunc.name(), method(reqVariant)});
             iter != std::end(handlers))
@@ -127,14 +129,14 @@ struct HttpRouter
 
         throw file_not_found(httpfunc.name());
     }
-    void operator()(VariantRequest&& req, auto&& cont)
+    void operator()(VariantRequest&& req, const tcp::endpoint& rep, auto&& cont)
     {
         net::spawn(ioc->get().get_executor(),
-                   [this, req = std::move(req),
+                   [this, req = std::move(req), rep = rep,
                     cont = std::move(cont)](net::yield_context yield) mutable {
             try
             {
-                auto response = process_request(req, yield);
+                auto response = process_request(req, std::move(rep), yield);
                 cont(std::move(response));
             }
             catch (std::exception& e)
@@ -174,12 +176,16 @@ struct HttpsServer
     HttpRouter router_;
     HttServerHandler handler{router_};
     AsyncSslServer<HttServerHandler> server;
-    HttpsServer(std::string_view port, std::string_view cert) :
-        server(handler, port, cert)
+    HttpsServer(net::io_context& ioc, std::string_view port,
+                std::string_view cert) : server(ioc, handler, port, cert)
     {}
     void start()
     {
         server.start();
+    }
+    void listen()
+    {
+        server.listen();
     }
     HttpRouter& router()
     {

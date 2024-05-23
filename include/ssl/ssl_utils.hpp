@@ -580,7 +580,7 @@ inline boost::asio::ssl::context
     {
         fs::create_directories(certPath);
     }
-    fs::path certFile = certPath / "server.pem";
+    fs::path certFile = certPath / "client-cert.pem";
     REACTOR_LOG_INFO("Building SSL Context file={}", certFile.string());
     std::string sslPemFile(certFile);
     ensureOpensslKeyPresentAndValid(sslPemFile);

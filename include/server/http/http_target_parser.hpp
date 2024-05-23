@@ -20,6 +20,7 @@ struct http_function
     using parameters = std::vector<parameter>;
     std::string _name;
     parameters _params;
+    tcp::endpoint rep;
     const auto& name() const
     {
         return _name;
@@ -31,6 +32,14 @@ struct http_function
     auto& params()
     {
         return _params;
+    }
+    const tcp::endpoint& endpoint() const
+    {
+        return rep;
+    }
+    void setEndpoint(tcp::endpoint&& ep)
+    {
+        rep = std::move(ep);
     }
     std::string operator[](const std::string& name) const
     {

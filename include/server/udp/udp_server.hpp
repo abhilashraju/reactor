@@ -11,9 +11,9 @@ template <typename Handler, size_t BuffSize = 1024>
 class UdpServer
 {
   public:
-    UdpServer(std::string_view p, Handler& h) :
-        port(p), socket_(ioc_, udp::endpoint(udp::v4(), atoi(p.data()))),
-        handler(h)
+    UdpServer(net::io_context& ctx, std::string_view p, Handler& h) :
+        ioc_(ctx), port(p),
+        socket_(ioc_, udp::endpoint(udp::v4(), atoi(p.data()))), handler(h)
     {
         buffer_.resize(BuffSize);
     }
@@ -21,6 +21,9 @@ class UdpServer
     void start()
     {
         acceptAsyncConnection();
+    }
+    void run()
+    {
         ioc_.run();
     }
     void acceptAsyncConnection()
@@ -61,8 +64,8 @@ class UdpServer
         });
     }
 
+    net::io_context& ioc_;
     std::string port;
-    net::io_context ioc_;
     udp::socket socket_;
 
     std::string buffer_;
