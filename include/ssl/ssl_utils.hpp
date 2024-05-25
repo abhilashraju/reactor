@@ -632,7 +632,8 @@ inline void prepareMutualTls(auto& context, std::string_view trustStorePath)
     caAvailable = caAvailable && !error;
     if (caAvailable)
     {
-        context.set_verify_mode(boost::asio::ssl::verify_peer);
+        context.set_verify_mode(boost::asio::ssl::verify_peer |
+                                boost::asio::ssl::verify_fail_if_no_peer_cert);
         context.add_verify_path(trustStorePath.data());
     }
 

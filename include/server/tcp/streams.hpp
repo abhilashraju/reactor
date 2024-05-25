@@ -89,14 +89,17 @@ struct SslStreamMakerImpl
         }
     };
     ssl::context sslContext;
-    SslStreamMakerImpl(std::string_view cirtDir) :
+    SslStreamMakerImpl(std::string_view cirtDir,
+                       std::string_view trustStorePath = "") :
         sslContext(
             ensuressl::loadCertificate(boost::asio::ssl::context::tls_server,
                                        {cirtDir.data(), cirtDir.size()}))
     {
         if constexpr (MTLS)
         {
-            ensuressl::prepareMutualTls(sslContext, ensuressl::trustStorePath);
+            ensuressl::prepareMutualTls(
+                sslContext, trustStorePath.empty() ? ensuressl::trustStorePath
+                                                   : trustStorePath);
         }
     }
 

@@ -48,8 +48,9 @@ struct AsyncSslServer : AsyncServer<StreamMaker, Handler>
 {
     using Base = AsyncServer<StreamMaker, Handler>;
     AsyncSslServer(net::io_context& ioc, Handler& handler,
-                   const std::string_view port, std::string_view cirtDir) :
-        Base(ioc, handler, port, StreamMaker(cirtDir))
+                   const std::string_view port, std::string_view cirtDir,
+                   std::string_view trustStorePath = "") :
+        Base(ioc, handler, port, StreamMaker(cirtDir, trustStorePath))
     {}
 };
 } // namespace reactor

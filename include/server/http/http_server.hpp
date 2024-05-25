@@ -169,15 +169,17 @@ struct HttpRouter
     HANDLER_MAP delete_handlers;
     std::optional<std::reference_wrapper<net::io_context>> ioc;
 };
-
-struct HttpsServer
+template <typename StreamMaker>
+struct HttpsServerImpl
 {
     using HttServerHandler = HttpHandler<HttpRouter>;
     HttpRouter router_;
     HttServerHandler handler{router_};
-    AsyncSslServer<HttServerHandler> server;
-    HttpsServer(net::io_context& ioc, std::string_view port,
-                std::string_view cert) : server(ioc, handler, port, cert)
+    AsyncSslServer<HttServerHandler, StreamMaker> server;
+    HttpsServerImpl(net::io_context& ioc, std::string_view port,
+                    std::string_view cert,
+                    std::string_view truststorepath = "") :
+        server(ioc, handler, port, cert, truststorepath)
     {}
     void start()
     {
@@ -192,4 +194,6 @@ struct HttpsServer
         return router_;
     }
 };
+using HttpsServer = HttpsServerImpl<SslStreamMaker>;
+using HttpMtlsServer = HttpsServerImpl<MtlsStreamMaker>;
 } // namespace reactor
