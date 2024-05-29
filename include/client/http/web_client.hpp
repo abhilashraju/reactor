@@ -357,9 +357,9 @@ struct WebClient
             host = std::move(h);
             return *this;
         }
-        WebClientBuilder& withPort(std::string p)
+        WebClientBuilder& withPort(std::string_view p)
         {
-            port = std::move(p);
+            port = {p.data(), p.length()};
             return *this;
         }
         WebClientBuilder& withTarget(std::string_view t)
